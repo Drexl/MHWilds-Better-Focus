@@ -1,83 +1,5 @@
 local M = {}
 
-local VK_ESCAPE = 27
-local IGNORED_CAPTURE_KEYS = {
-    [1] = true,  -- LMB
-    [2] = true,  -- RMB
-    [27] = true, -- ESC is reserved for cancel
-}
-
-local KEY_NAMES = {
-    [8] = "BACKSPACE",
-    [9] = "TAB",
-    [13] = "ENTER",
-    [16] = "SHIFT",
-    [17] = "CTRL",
-    [18] = "ALT",
-    [19] = "PAUSE",
-    [20] = "CAPSLOCK",
-    [32] = "SPACE",
-    [33] = "PAGEUP",
-    [34] = "PAGEDOWN",
-    [35] = "END",
-    [36] = "HOME",
-    [37] = "LEFT",
-    [38] = "UP",
-    [39] = "RIGHT",
-    [40] = "DOWN",
-    [44] = "PRINTSCREEN",
-    [45] = "INSERT",
-    [46] = "DELETE",
-    [91] = "LWIN",
-    [92] = "RWIN",
-    [93] = "MENU",
-    [96] = "NUMPAD0",
-    [97] = "NUMPAD1",
-    [98] = "NUMPAD2",
-    [99] = "NUMPAD3",
-    [100] = "NUMPAD4",
-    [101] = "NUMPAD5",
-    [102] = "NUMPAD6",
-    [103] = "NUMPAD7",
-    [104] = "NUMPAD8",
-    [105] = "NUMPAD9",
-    [106] = "NUMPAD_MULTIPLY",
-    [107] = "NUMPAD_ADD",
-    [108] = "NUMPAD_SEPARATOR",
-    [109] = "NUMPAD_SUBTRACT",
-    [110] = "NUMPAD_DECIMAL",
-    [111] = "NUMPAD_DIVIDE",
-    [144] = "NUMLOCK",
-    [145] = "SCROLLLOCK",
-    [186] = "SEMICOLON",
-    [187] = "EQUALS",
-    [188] = "COMMA",
-    [189] = "MINUS",
-    [190] = "PERIOD",
-    [191] = "SLASH",
-    [192] = "GRAVE",
-    [219] = "LBRACKET",
-    [220] = "BACKSLASH",
-    [221] = "RBRACKET",
-    [222] = "APOSTROPHE",
-}
-
-for code = string.byte("0"), string.byte("9") do
-    KEY_NAMES[code] = string.char(code)
-end
-
-for code = string.byte("A"), string.byte("Z") do
-    KEY_NAMES[code] = string.char(code)
-end
-
-for offset = 0, 23 do
-    KEY_NAMES[112 + offset] = string.format("F%d", offset + 1)
-end
-
-local function get_key_name(code)
-    return KEY_NAMES[code] or string.format("VK_%d", code)
-end
-
 local function build_weapon_action_type_names(action_name)
     local type_names = {}
     for type_id = 0, 13 do
@@ -86,17 +8,60 @@ local function build_weapon_action_type_names(action_name)
     return type_names
 end
 
+local function build_weapon_subaction_type_names(action_name)
+    local type_names = {}
+    for type_id = 0, 13 do
+        type_names[#type_names + 1] = string.format("app.Wp%02dSubAction.%s", type_id, action_name)
+    end
+    return type_names
+end
+
 function M.create(app)
     local self = {}
     local move_input_threshold = 0.10
+    local shortcut_focus_restore_delay = 0.05
+    local shortcut_focus_restore_duration = 0.75
+    local shortcut_focus_recent_window = 0.25
 
     local weapon_aim_idle_types = build_weapon_action_type_names("cAimIdle")
     local weapon_aim_walk_types = build_weapon_action_type_names("cAimWalk")
+    local weapon_aim_walk_stop_types = build_weapon_action_type_names("cAimWalkStop")
+    local weapon_aim_end_types = build_weapon_action_type_names("cAimEnd")
+    local weapon_aim_end_subaction_types = build_weapon_subaction_type_names("cAimEnd")
+    local extra_aim_walk_stop_types = {
+        "app.WpCommonActions.cAimWalkStop",
+        "app.WpGunActions.cAimWalkStop",
+        "app.Wp04Action.cChargeAimWalkStop",
+        "app.Wp08Action.cSwordAimWalkStop",
+        "app.Wp09Action.cAxeAimWalkStop",
+    }
+    local extra_aim_end_types = {
+        "app.WpCommonActions.cAimEnd",
+        "app.WpCommonSubAction.cAimEnd",
+        "app.Wp08SubAction.cSwordAimEnd",
+        "app.Wp09SubAction.cAxeAimEnd",
+    }
     local dash_retry_interval = 0.10
     local dash_sheathe_retry = {
         active = false,
         nextAttemptAt = 0,
     }
+
+    local function clear_shortcut_focus_restore()
+        app.state.status.restoreFocusAfterShortcut = false
+        app.state.status.restoreFocusAfterShortcutAt = 0
+        app.state.status.restoreFocusAfterShortcutUntil = 0
+    end
+
+    local function should_restore_shortcut_focus()
+        return app.state.status.restoreFocusAfterShortcut
+            and app.game.is_weapon_enabled()
+            and not app.state.status.suppressFocusUntilWeaponDrawn
+    end
+
+    local function had_recent_focus_before_shortcut()
+        return (os.clock() - (app.state.status.lastObservedFocusAt or 0)) <= shortcut_focus_recent_window
+    end
 
     local function stop_dash_sheathe_retry()
         dash_sheathe_retry.active = false
@@ -160,28 +125,39 @@ function M.create(app)
         end
     end
 
-    local function try_capture_custom_key(binding_field, config_key_field, config_name_field)
-        if not app.state.binding[binding_field] then
-            return
-        end
-
-        if reframework:is_key_down(VK_ESCAPE) then
-            app.state.binding[binding_field] = false
-            return
-        end
-
-        for code = 8, 255 do
-            if not IGNORED_CAPTURE_KEYS[code] and reframework:is_key_down(code) then
-                app.config.hotkeys[config_key_field] = code
-                app.config.hotkeys[config_name_field] = get_key_name(code)
-                app.state.binding[binding_field] = false
-                app.save_config()
-                break
-            end
-        end
-    end
-
     function self.init()
+        app.hooks.hook(
+            "app.GUI020600",
+            {
+                "requestOpenPCShortcut(app.GUI020600.TYPE, System.Int32, System.Int32, app.GUI020600.MODE, via.gui.Rect)",
+                "requestOpenPCShortcut",
+            },
+            function()
+                if app.game.is_weapon_enabled()
+                    and not app.state.status.suppressFocusUntilWeaponDrawn
+                    and had_recent_focus_before_shortcut() then
+                    app.state.status.restoreFocusAfterShortcut = true
+                    app.state.status.restoreFocusAfterShortcutAt = -1
+                    app.state.status.restoreFocusAfterShortcutUntil = 0
+                else
+                    clear_shortcut_focus_restore()
+                end
+            end
+        )
+
+        app.hooks.hook(
+            "app.GUI020600",
+            { "onHudClose()", "onHudClose" },
+            function()
+                if not app.state.status.restoreFocusAfterShortcut then
+                    return
+                end
+
+                app.state.status.restoreFocusAfterShortcutAt = os.clock() + shortcut_focus_restore_delay
+                app.state.status.restoreFocusAfterShortcutUntil = os.clock() + shortcut_focus_restore_duration
+            end
+        )
+
         app.hooks.hook("app.PlayerCommonAction.cSquatIdleTurn", { "doEnter()", "doEnter" }, function()
             app.state.status.lastCrouchTurnAt = os.clock()
             app.state.status.isCrouchTurn = true
@@ -197,7 +173,7 @@ function M.create(app)
 
         for _, type_name in ipairs(weapon_aim_idle_types) do
             app.hooks.hook_owner(type_name, { "doUpdate()", "doUpdate" }, function()
-                self.handle_dash_hotkey(true)
+                self.handle_dash_hotkey(false)
             end)
         end
 
@@ -206,12 +182,70 @@ function M.create(app)
                 self.handle_dash_hotkey(true)
             end)
         end
+
+        for _, type_name in ipairs(weapon_aim_walk_stop_types) do
+            app.hooks.hook_owner(type_name, { "doUpdate()", "doUpdate" }, function()
+                self.handle_dash_hotkey(false)
+            end)
+        end
+
+        for _, type_name in ipairs(extra_aim_walk_stop_types) do
+            app.hooks.hook_owner(type_name, { "doUpdate()", "doUpdate" }, function()
+                self.handle_dash_hotkey(false)
+            end)
+        end
+
+        -- Some weapons pass through a short aim-ending settle animation after
+        -- movement input is released. Treat those end states as idle-sheathe
+        -- candidates so dash-sheathe does not wait for the full pose reset.
+        for _, type_name in ipairs(weapon_aim_end_types) do
+            app.hooks.hook_owner(type_name, { "doUpdate()", "doUpdate" }, function()
+                self.handle_dash_hotkey(false)
+            end)
+        end
+
+        for _, type_name in ipairs(weapon_aim_end_subaction_types) do
+            app.hooks.hook_owner(type_name, { "doUpdate()", "doUpdate" }, function()
+                self.handle_dash_hotkey(false)
+            end)
+        end
+
+        for _, type_name in ipairs(extra_aim_end_types) do
+            app.hooks.hook_owner(type_name, { "doUpdate()", "doUpdate" }, function()
+                self.handle_dash_hotkey(false)
+            end)
+        end
     end
 
     function self.update()
+        local is_focus_active = app.game.is_focus_active()
+        local is_targeting = app.game.is_camera_targeting()
         local is_weapon_drawn = app.game.is_weapon_drawn()
         local overwrite_weapon_on_off_state = app.game.get_overwrite_weapon_on_off_state()
         local dash_input_state = app.game.get_dash_input_state()
+
+        if is_focus_active or is_targeting then
+            app.state.status.lastObservedFocusAt = os.clock()
+        end
+
+        if app.state.status.restoreFocusAfterShortcut then
+            if app.state.status.restoreFocusAfterShortcutAt < 0 then
+                -- Shortcut HUD is still open; wait for onHudClose to convert
+                -- the armed state into an actual restore attempt.
+            elseif not should_restore_shortcut_focus()
+                or app.state.status.restoreFocusAfterShortcutUntil <= os.clock() then
+                clear_shortcut_focus_restore()
+            elseif app.state.status.restoreFocusAfterShortcutAt > 0
+                and os.clock() >= app.state.status.restoreFocusAfterShortcutAt then
+                if app.game.is_focus_active() then
+                    clear_shortcut_focus_restore()
+                else
+                    app.focus.activate(true)
+                    app.state.status.restoreFocusAfterShortcutAt = os.clock() + shortcut_focus_restore_delay
+                end
+            end
+        end
+
         if app.state.status.wasWeaponDrawn == nil then
             app.state.status.wasWeaponDrawn = is_weapon_drawn
         else
@@ -263,8 +297,7 @@ function M.create(app)
             app.state.status.isSheathing = false
         end
 
-        try_capture_custom_key("dashCustomKey", "dashCustomKey", "dashCustomKeyName")
-        try_capture_custom_key("seikretCustomKey", "seikretCustomKey", "seikretCustomKeyName")
+        app.state.status.wasFocusActive = is_focus_active
     end
 
     return self

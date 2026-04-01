@@ -88,9 +88,7 @@ function M.create(app)
     end
 
     function self.begin_unarmed_call_attempt()
-        app.state.seikret.unarmedCallAttemptId = app.state.seikret.unarmedCallAttemptId + 1
         app.state.seikret.unarmedCallAttemptUntil = os.clock() + unarmed_call_attempt_duration
-        app.state.seikret.lastUnarmedCallNudgeAt = 0
         app.state.seikret.unarmedCallPrepareSeen = false
         app.state.seikret.unarmedCallEnterSeen = false
         app.state.seikret.unarmedCallSuccessNudged = false
@@ -106,7 +104,6 @@ function M.create(app)
         app.state.seikret.pendingRideJudgeAttempts = 0
         app.state.seikret.pendingSubActionRequestAt = 0
         app.state.seikret.pendingSubActionRequestAttempts = 0
-        app.dev.trace_seikret("unarmedCallAttempt.begin", "id=" .. tostring(app.state.seikret.unarmedCallAttemptId))
     end
 
     function self.finish_unarmed_call_attempt(result_name)
@@ -114,7 +111,6 @@ function M.create(app)
             return
         end
 
-        app.dev.trace_seikret(result_name, "id=" .. tostring(app.state.seikret.unarmedCallAttemptId))
         app.state.seikret.unarmedCallAttemptUntil = 0
         app.state.seikret.restoreFocusOnSuccessfulUnarmedCall = false
         app.state.seikret.pendingSuccessInputCheck = nil
@@ -135,22 +131,18 @@ function M.create(app)
     -- once so the game can accept the call.
     function self.try_allow_unarmed_call(reason)
         if not app.config.seikret.allowUnarmedFocusCall then
-            app.dev.trace_seikret("tryAllowUnarmedCall.skipped", "reason=settingOff")
             return false
         end
 
         if not self.is_unarmed_focus_active() then
-            app.dev.trace_seikret("tryAllowUnarmedCall.skipped", "reason=notUnarmedFocus")
             return false
         end
 
         if (os.clock() - app.state.seikret.lastUnarmedCallFocusDropAt) < 0.15 then
-            app.dev.trace_seikret("tryAllowUnarmedCall.skipped", "reason=debounce")
             return false
         end
 
         app.state.seikret.lastUnarmedCallFocusDropAt = os.clock()
-        app.dev.trace_seikret("tryAllowUnarmedCall.drop", "reason=" .. tostring(reason or "unknown"))
         app.focus.disable()
         return true
     end
@@ -243,7 +235,7 @@ function M.create(app)
         -- Input-check normal execution runs while the player is holding the
         -- porter-call input. Gating on the hold timer keeps the fix tied to a
         -- real call attempt instead of merely entering slinger aim.
-        local call_porter_input_hooked = app.hooks.hook(
+        app.hooks.hook(
             "app.btable.PlCommand.cCallPorterInputCheck",
             {
                 "executePrepareAction(app.cPlayerBTableCommandWork)",
@@ -254,13 +246,11 @@ function M.create(app)
             function(args)
             local input_check = app.game.try_get_managed_object(args and args[2] or nil)
             local pressed_timer = input_check and get_field_safe(input_check, "_PressedTimer") or nil
-            app.dev.trace_seikret("callPorterInput.executePrepareAction", "pressedTimer=" .. tostring(pressed_timer))
             if type(pressed_timer) == "number" and pressed_timer > 0 then
                 self.try_begin_unarmed_call_attempt("callPorterInput")
             end
             if self.is_unarmed_call_attempt_active() and not app.state.seikret.unarmedCallPrepareSeen then
                 app.state.seikret.unarmedCallPrepareSeen = true
-                app.dev.trace_seikret("unarmedCallAttempt.prepareAction", "id=" .. tostring(app.state.seikret.unarmedCallAttemptId))
             end
 
             if self.is_unarmed_call_attempt_active()
@@ -277,13 +267,11 @@ function M.create(app)
                 app.state.seikret.pendingSuccessAttempts = 0
                 app.state.seikret.pendingSubActionRequestAt = os.clock() + delayed_replay_interval
                 app.state.seikret.pendingSubActionRequestAttempts = 0
-                app.dev.trace_seikret("unarmedCallAttempt.queueSuccess", "id=" .. tostring(app.state.seikret.unarmedCallAttemptId))
             end
         end
         )
-        app.dev.trace_seikret("hook.register", "callPorterInput=" .. tostring(call_porter_input_hooked))
 
-        local ride_call_judge_hooked = app.hooks.hook(
+        app.hooks.hook(
             "app.btable.PlCommand.cRideCallPorterJudge",
             {
                 "executePrepareAction(app.cPlayerBTableCommandWork, app.btable.PlCommand.cOptionArg)",
@@ -292,10 +280,8 @@ function M.create(app)
                 "judge",
             },
             function(args)
-            app.dev.trace_seikret("rideCallPorterJudge.executePrepareAction")
             if self.is_unarmed_call_attempt_active() and not app.state.seikret.unarmedCallPrepareSeen then
                 app.state.seikret.unarmedCallPrepareSeen = true
-                app.dev.trace_seikret("unarmedCallAttempt.prepareAction", "id=" .. tostring(app.state.seikret.unarmedCallAttemptId))
             end
 
             if self.is_unarmed_call_attempt_active()
@@ -313,15 +299,12 @@ function M.create(app)
                     app.state.seikret.pendingRideJudgeOptionArg = args[4]
                     app.state.seikret.pendingRideJudgeAt = os.clock() + delayed_replay_interval
                     app.state.seikret.pendingRideJudgeAttempts = 0
-                    app.dev.trace_seikret("unarmedCallAttempt.queueJudgeReplay", "id=" .. tostring(app.state.seikret.unarmedCallAttemptId))
                 end
             end
         end
         )
-        app.dev.trace_seikret("hook.register", "rideCallPorterJudge=" .. tostring(ride_call_judge_hooked))
 
         app.hooks.hook_owner("app.PlayerCommonSubAction.cCallPorter", { "doEnter()", "doEnter" }, function()
-            app.dev.trace_seikret("playerCallPorter.doEnter")
             app.state.seikret.unarmedCallEnterSeen = true
             if app.state.seikret.restoreFocusOnSuccessfulUnarmedCall then
                 app.focus.activate(true)
@@ -331,7 +314,6 @@ function M.create(app)
         end)
 
         app.hooks.hook_owner("app.WpCommonSubAction.cCallPorter", { "doEnter()", "doEnter" }, function()
-            app.dev.trace_seikret("weaponCallPorter.doEnter")
             app.state.seikret.unarmedCallEnterSeen = true
             if app.state.seikret.restoreFocusOnSuccessfulUnarmedCall then
                 app.focus.activate(true)
@@ -431,13 +413,6 @@ function M.create(app)
                     )
                 end)
                 is_replaying_ride_judge = false
-                app.dev.trace_seikret(
-                    "unarmedCallAttempt.replayJudge",
-                    "id=" .. tostring(app.state.seikret.unarmedCallAttemptId)
-                        .. " attempt=" .. tostring(app.state.seikret.pendingRideJudgeAttempts)
-                        .. " judgeOk=" .. tostring(judge_ok)
-                        .. " prepareOk=" .. tostring(prepare_ok)
-                )
 
                 if app.state.seikret.unarmedCallEnterSeen or app.state.seikret.pendingRideJudgeAttempts >= max_delayed_replay_attempts then
                     app.state.seikret.pendingRideJudgeAt = 0
@@ -452,12 +427,6 @@ function M.create(app)
                 and app.state.seikret.pendingSubActionRequestAttempts < max_delayed_replay_attempts then
                 app.state.seikret.pendingSubActionRequestAttempts = app.state.seikret.pendingSubActionRequestAttempts + 1
                 local ok = app.game.request_player_sub_action(call_porter_action_category, call_porter_action_index)
-                app.dev.trace_seikret(
-                    "unarmedCallAttempt.requestAction",
-                    "id=" .. tostring(app.state.seikret.unarmedCallAttemptId)
-                        .. " attempt=" .. tostring(app.state.seikret.pendingSubActionRequestAttempts)
-                        .. " ok=" .. tostring(ok)
-                )
 
                 if app.state.seikret.unarmedCallEnterSeen or app.state.seikret.pendingSubActionRequestAttempts >= max_delayed_replay_attempts then
                     app.state.seikret.pendingSubActionRequestAt = 0
@@ -477,12 +446,6 @@ function M.create(app)
                         app.state.seikret.pendingSuccessCommandWork
                     )
                 end)
-                app.dev.trace_seikret(
-                    "unarmedCallAttempt.forceSuccess",
-                    "id=" .. tostring(app.state.seikret.unarmedCallAttemptId)
-                        .. " attempt=" .. tostring(app.state.seikret.pendingSuccessAttempts)
-                        .. " ok=" .. tostring(ok)
-                )
 
                 if app.state.seikret.unarmedCallEnterSeen or app.state.seikret.pendingSuccessAttempts >= max_delayed_replay_attempts then
                     app.state.seikret.pendingSuccessAt = 0

@@ -5,6 +5,8 @@ local Game = require("BetterFocus.core.game")
 local Hooks = require("BetterFocus.core.hooks")
 local Tooltips = require("BetterFocus.ui.tooltips")
 local Menu = require("BetterFocus.ui.menu")
+-- Keep optional dev helpers as a drop-in local module so release builds can
+-- omit it without touching the main application wiring.
 local dev_loaded, Dev = pcall(require, "BetterFocus.dev")
 local Focus = require("BetterFocus.features.focus")
 local Camera = require("BetterFocus.features.camera")
@@ -31,8 +33,6 @@ function M.init()
     app.dev = dev_loaded and Dev.create(app) or {
         update = function() end,
         draw = function() end,
-        trace_seikret = function() end,
-        trace_window_refocus = function() end,
     }
     app.focus = Focus.create(app)
     app.camera = Camera.create(app)

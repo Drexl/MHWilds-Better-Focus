@@ -8,7 +8,8 @@ Primary features:
 - Sprint/Dash can sheathe your weapon
 - Modify focus behavior when mounting Seikret
 - Fixes unarmed Focus Mode blocking Seikret call
-- Disable focus/target camera snapping for HunterPie users
+- Fixes focus loss when MHWilds stops being the foreground window.
+- Disable focus/target camera snapping (useful for some HunterPie configurations)
 - Blocking turns your hunter toward the targeted monster
 
 This mod was inspired excellent by mods like AutoFocus, which were out of date when this was created. It is a full rewrite with a broader scope than similar mods.
@@ -35,7 +36,7 @@ Configure using the REFramework UI (Insert key by default).
 - Expand "Better Focus".
 - Toggle settings on/off as desired.
 
-# KNOWN LIMITATIONS
+# KNOWN LIMITATIONS/ISSUES
 
 - System hotkey detection reads the global melee and ranged keyboard profiles only. Weapon-specific keyboard profiles are not currently read. Custom keybind overrides are available in the settings if needed.
 - This mod was primarily developed and tested for KB+M play. Controller testing was more limited, but the features should work. Report issues if you find any.

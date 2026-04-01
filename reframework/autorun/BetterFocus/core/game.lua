@@ -4,6 +4,9 @@ local State = require("BetterFocus.core.state")
 local M = {}
 local MELEE_SHARED_KEYBOARD_CONFIG_INDEX = 1
 local RANGED_SHARED_KEYBOARD_CONFIG_INDEX = 2
+-- Wilds stores menu controls in config 0, then shared melee/ranged profiles,
+-- then weapon-specific gameplay profiles in weapon type order.
+local WEAPON_KEYBOARD_CONFIG_INDEX_OFFSET = 3
 local DASH_PRESS_KEYDATA_INDEX = 4
 local DASH_HOLD_KEYDATA_INDEX = 5
 local MELEE_SEIKRET_AUTO_CALL_KEYDATA_INDEX = 37
@@ -179,6 +182,9 @@ function M.create(app)
 
         if live_character_address == 0 or live_controller_address == 0 then
             if cached_character_address ~= 0 or cached_controller_address ~= 0 then
+                -- Returning to title destroys the old gameplay session. Reset
+                -- transient state here so Better Focus recovers without a
+                -- manual script reload.
                 State.reset_runtime(app.state)
             else
                 clear_player_runtime_caches()
@@ -349,6 +355,24 @@ function M.create(app)
         end
 
         return MELEE_SHARED_KEYBOARD_CONFIG_INDEX
+    end
+
+    function self.get_weapon_gameplay_config_index()
+        local weapon_type = self.get_weapon_type_id()
+        if type(weapon_type) ~= "number" or weapon_type < 0 then
+            return nil
+        end
+
+        return weapon_type + WEAPON_KEYBOARD_CONFIG_INDEX_OFFSET
+    end
+
+    function self.get_active_gameplay_config_index()
+        local weapon_config_index = self.get_weapon_gameplay_config_index()
+        if type(weapon_config_index) == "number" then
+            return weapon_config_index
+        end
+
+        return self.get_shared_gameplay_config_index()
     end
 
     function self.get_shared_keydata_index(melee_index, ranged_index)
@@ -563,7 +587,7 @@ function M.create(app)
         return system_common and get_field_safe(system_common, "_KeyConfigKeyboard") or nil
     end
 
-    function self.resolve_shared_main_key(config_index, keydata_index)
+    function self.resolve_main_key(config_index, keydata_index)
         local keyboard_config_list = self.get_keyboard_config_list()
         local key_configs = keyboard_config_list and get_field_safe(keyboard_config_list, "_KeyCon") or nil
         if type(config_index) ~= "number" or config_index < 0 then
@@ -582,13 +606,12 @@ function M.create(app)
         return nil
     end
 
-    function self.resolve_shared_main_keys(keydata_indices)
-        local config_index = self.get_shared_gameplay_config_index()
+    function self.resolve_main_keys(config_index, keydata_indices)
         local keys = {}
         local seen = {}
 
         for _, keydata_index in ipairs(keydata_indices) do
-            local ace_key_index = self.resolve_shared_main_key(config_index, keydata_index)
+            local ace_key_index = self.resolve_main_key(config_index, keydata_index)
             if type(ace_key_index) == "number" and ace_key_index >= 0 and not seen[ace_key_index] then
                 seen[ace_key_index] = true
                 keys[#keys + 1] = ace_key_index
@@ -598,33 +621,44 @@ function M.create(app)
         return keys
     end
 
+    function self.resolve_active_main_key(melee_index, ranged_index)
+        local keydata_index = self.get_shared_keydata_index(melee_index, ranged_index)
+        local config_index = self.get_active_gameplay_config_index()
+        local ace_key_index = self.resolve_main_key(config_index, keydata_index)
+        if type(ace_key_index) == "number" and ace_key_index >= 0 then
+            return ace_key_index
+        end
+
+        -- Empty or missing weapon-specific entries should fall back to the
+        -- shared melee/ranged profile so Better Focus still follows the in-game
+        -- binding layout even if the player only customized the shared page.
+        return self.resolve_main_key(self.get_shared_gameplay_config_index(), keydata_index)
+    end
+
+    function self.resolve_active_main_keys(melee_indices, ranged_indices)
+        local keydata_indices = melee_indices
+        if RANGED_WEAPON_TYPES[self.get_weapon_type_id()] == true then
+            keydata_indices = ranged_indices
+        end
+
+        local config_index = self.get_active_gameplay_config_index()
+        local keys = self.resolve_main_keys(config_index, keydata_indices)
+        if #keys > 0 then
+            return keys
+        end
+
+        return self.resolve_main_keys(self.get_shared_gameplay_config_index(), keydata_indices)
+    end
+
     function self.get_system_dash_press_key_index()
-        local config_index = self.get_shared_gameplay_config_index()
-        local keydata_index = self.get_shared_keydata_index(DASH_PRESS_KEYDATA_INDEX, DASH_PRESS_KEYDATA_INDEX)
-        return self.resolve_shared_main_key(config_index, keydata_index)
+        return self.resolve_active_main_key(DASH_PRESS_KEYDATA_INDEX, DASH_PRESS_KEYDATA_INDEX)
     end
 
     function self.get_system_seikret_key_indices()
-        local auto_index = self.get_shared_keydata_index(
-            MELEE_SEIKRET_AUTO_CALL_KEYDATA_INDEX,
-            RANGED_SEIKRET_AUTO_CALL_KEYDATA_INDEX
+        return self.resolve_active_main_keys(
+            { MELEE_SEIKRET_AUTO_CALL_KEYDATA_INDEX, MELEE_SEIKRET_MANUAL_CALL_KEYDATA_INDEX },
+            { RANGED_SEIKRET_AUTO_CALL_KEYDATA_INDEX, RANGED_SEIKRET_MANUAL_CALL_KEYDATA_INDEX }
         )
-        local manual_index = self.get_shared_keydata_index(
-            MELEE_SEIKRET_MANUAL_CALL_KEYDATA_INDEX,
-            RANGED_SEIKRET_MANUAL_CALL_KEYDATA_INDEX
-        )
-        return self.resolve_shared_main_keys({ auto_index, manual_index })
-    end
-
-    function self.is_custom_key_down(virtual_key_code)
-        if type(virtual_key_code) ~= "number" then
-            return false
-        end
-
-        local ok, is_down = pcall(function()
-            return reframework:is_key_down(virtual_key_code)
-        end)
-        return ok and is_down == true
     end
 
     function self.is_any_ace_key_down(ace_key_indices)
@@ -647,18 +681,8 @@ function M.create(app)
         local state = {
             systemPress = false,
             systemHold = false,
-            custom = false,
             controllerPress = false,
         }
-
-        if app.config.hotkeys.dashKeySource == "custom" then
-            state.custom = self.is_custom_key_down(app.config.hotkeys.dashCustomKey)
-            if app.config.hotkeys.controllerSupport then
-                state.controllerPress = self.is_gamepad_button_down(GAMEPAD_LS)
-            end
-            state.any = state.custom or state.controllerPress
-            return state
-        end
 
         local keyboard = self.get_ace_keyboard()
         if keyboard then
@@ -667,10 +691,7 @@ function M.create(app)
                 state.systemPress = try_call(keyboard, "isOn", press_key_index) == true
             end
 
-            local hold_key_index = self.resolve_shared_main_key(
-                self.get_shared_gameplay_config_index(),
-                self.get_shared_keydata_index(DASH_HOLD_KEYDATA_INDEX, DASH_HOLD_KEYDATA_INDEX)
-            )
+            local hold_key_index = self.resolve_active_main_key(DASH_HOLD_KEYDATA_INDEX, DASH_HOLD_KEYDATA_INDEX)
             if type(hold_key_index) == "number" then
                 state.systemHold = try_call(keyboard, "isOn", hold_key_index) == true
             end
@@ -688,10 +709,6 @@ function M.create(app)
         local controller_down = false
         if app.config.hotkeys.controllerSupport then
             controller_down = self.is_gamepad_button_down(GAMEPAD_DPAD_UP) or self.is_gamepad_button_down(GAMEPAD_DPAD_DOWN)
-        end
-
-        if app.config.hotkeys.seikretKeySource == "custom" then
-            return self.is_custom_key_down(app.config.hotkeys.seikretCustomKey) or controller_down
         end
 
         return self.is_any_ace_key_down(self.get_system_seikret_key_indices()) or controller_down

@@ -27,6 +27,10 @@ function M.new()
             restoreFocusOnWindowRefocusUntil = 0,
             lastWindowRefocusRestoreAt = 0,
             refocusRestoreEligible = false,
+            restoreFocusAfterShortcut = false,
+            restoreFocusAfterShortcutAt = 0,
+            restoreFocusAfterShortcutUntil = 0,
+            lastObservedFocusAt = 0,
             wasTargeting = nil,
             wasWeaponDrawn = nil,
             wasOverwriteWeaponOnOffState = nil,
@@ -52,9 +56,7 @@ function M.new()
             dismountContextUntil = 0,
             jumpWindowDuration = 1.0,
             lastUnarmedCallFocusDropAt = 0,
-            unarmedCallAttemptId = 0,
             unarmedCallAttemptUntil = 0,
-            lastUnarmedCallNudgeAt = 0,
             unarmedCallPrepareSeen = false,
             unarmedCallEnterSeen = false,
             unarmedCallSuccessNudged = false,
@@ -75,10 +77,6 @@ function M.new()
             text = nil,
             position = nil,
         },
-        binding = {
-            dashCustomKey = false,
-            seikretCustomKey = false,
-        },
         hotkeys = {
             lastActionAt = 0,
         },
@@ -95,7 +93,6 @@ function M.reset_runtime(state)
     state.camera = fresh.camera
     state.seikret = fresh.seikret
     state.tooltip = fresh.tooltip
-    state.binding = fresh.binding
     state.hotkeys = fresh.hotkeys
     state.scheduled = fresh.scheduled
 end

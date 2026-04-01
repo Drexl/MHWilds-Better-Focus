@@ -63,15 +63,10 @@ function M.defaults()
             disableTargetCameraSnap = false,
             snapToMonsterOnBlock = false,
             tooltipHelpers = true,
+            keyboardShortcutSettingNoticeDismissed = false,
         },
         hotkeys = {
             controllerSupport = false,
-            dashKeySource = "system",
-            dashCustomKey = 16,
-            dashCustomKeyName = "SHIFT",
-            seikretKeySource = "system",
-            seikretCustomKey = 9,
-            seikretCustomKeyName = "TAB",
         },
     }
 end
@@ -85,12 +80,9 @@ function M.load()
         merge_known(config, saved)
 
         if type(saved.hotkeys) == "table" then
-            if saved.hotkeys.dashKey ~= nil then
-                config.hotkeys.dashCustomKey = saved.hotkeys.dashKey
-            end
-            if type(saved.hotkeys.dashKeyName) == "string" then
-                config.hotkeys.dashCustomKeyName = saved.hotkeys.dashKeyName
-            end
+            -- Older releases stored dash-related behavior under hotkeys.
+            -- Preserve those two behavior toggles while intentionally ignoring
+            -- the removed custom-key source fields.
             if saved.hotkeys.enableMouseKeyboard ~= nil then
                 config.misc.sheatheOnDash = saved.hotkeys.enableMouseKeyboard == true
             end

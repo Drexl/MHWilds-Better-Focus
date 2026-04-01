@@ -4,6 +4,60 @@ local M = {}
 
 function M.create(app)
     local self = {}
+    local keyboard_shortcut_setting_present = nil
+    local warning_color = 0xFF6060FF
+
+    local function detect_keyboard_shortcut_setting()
+        if keyboard_shortcut_setting_present ~= nil then
+            return keyboard_shortcut_setting_present
+        end
+
+        local config = json.load_file("Keyboard_Shortcut_Setting.json")
+        if type(config) == "table" then
+            keyboard_shortcut_setting_present = true
+            return true
+        end
+
+        keyboard_shortcut_setting_present = false
+        return false
+    end
+
+    local function should_show_keyboard_shortcut_setting_notice()
+        if app.config.misc.keyboardShortcutSettingNoticeDismissed then
+            return false
+        end
+
+        if not detect_keyboard_shortcut_setting() then
+            return false
+        end
+
+        return true
+    end
+
+    local function draw_keyboard_shortcut_setting_notice()
+        if not should_show_keyboard_shortcut_setting_notice() then
+            return
+        end
+
+        imgui.separator()
+        imgui.text_colored('COMPATABILITY NOTICE', warning_color)
+        imgui.text_colored('Better Focus has detected that you are using', warning_color)
+        imgui.text_colored('the mod "Keyboard Shortcut Setting".', warning_color)
+        imgui.text_colored('To avoid potentially jarring camera behavior', warning_color)
+        imgui.text_colored('when performing certain actions from the', warning_color)
+        imgui.text_colored('shortcut menu, please do not lower Shortcut', warning_color)
+        imgui.text_colored('Display Time below 0.8 in that mod\'s settings.', warning_color)
+        imgui.text_colored('Some weapons can get away with a lower value.', warning_color)
+        imgui.new_line()
+
+        if imgui.button("OK") then
+            app.config.misc.keyboardShortcutSettingNoticeDismissed = true
+            app.save_config()
+        end
+
+        imgui.separator()
+        imgui.new_line()
+    end
 
     local function checkbox_with_tooltip(label, value, tooltip)
         local changed, selected = imgui.checkbox(label, value)
@@ -24,6 +78,8 @@ function M.create(app)
         if not imgui.tree_node('Better Focus') then
             return
         end
+
+        draw_keyboard_shortcut_setting_notice()
 
         local changed
         local selected
@@ -79,7 +135,7 @@ function M.create(app)
             if changed then app.save_config() end
             if app.config.misc.sheatheOnDash then
                 imgui.indent(18)
-                changed, app.config.misc.autoDash = checkbox_with_tooltip('Auto dash', app.config.misc.autoDash, 'Useful if you use toggle-dash. Sends your "Dash (Press Once)" key, or the custom key set in hotkey settings, after the above two actions are complete.')
+                changed, app.config.misc.autoDash = checkbox_with_tooltip('Auto dash', app.config.misc.autoDash, 'Useful if you like toggle-dash. Automatically toggles dash after the above two actions are complete. Works even if no key is bound to "Dash (Press Once)".')
                 if changed then app.save_config() end
                 imgui.unindent(18)
             end
@@ -91,55 +147,6 @@ function M.create(app)
             if changed then app.save_config() end
 
             imgui.new_line()
-            imgui.tree_pop()
-        end
-
-        if tree_with_tooltip('Hotkey Settings', 'Configure which keyboard keys Better Focus listens for.') then
-            imgui.text('Dash key source')
-            changed, selected = checkbox_with_tooltip('System Dash keys', app.config.hotkeys.dashKeySource == 'system', 'Listens for the "Dash (Press Once)" and "Dash (Hold)" keys from game keybind settings. Will ONLY read the global melee and ranged weapon profiles, not keybind profiles for specific weapons. Use custom key setting to override.')
-            if changed and selected then
-                app.config.hotkeys.dashKeySource = 'system'
-                app.save_config()
-            end
-            changed, selected = checkbox_with_tooltip('Custom key##DashKeySource', app.config.hotkeys.dashKeySource == 'custom', 'Press any keyboard key to bind it. Press ESC to cancel.')
-            if changed and selected then
-                app.config.hotkeys.dashKeySource = 'custom'
-                app.save_config()
-            end
-            if app.config.hotkeys.dashKeySource == 'custom' then
-                imgui.indent(18)
-                imgui.text('Dash custom key:')
-                imgui.same_line()
-                local dash_button_label = app.state.binding.dashCustomKey and 'Binding...' or app.config.hotkeys.dashCustomKeyName
-                if imgui.small_button(dash_button_label) then
-                    app.state.binding.dashCustomKey = true
-                end
-                imgui.unindent(18)
-            end
-
-            imgui.new_line()
-            imgui.text('Seikret Call key source')
-            changed, selected = checkbox_with_tooltip('System Call Seikret keys', app.config.hotkeys.seikretKeySource == 'system', 'Listens for the "Call Seikret (Auto)" and "Call Seikret (Manual)" keys from game keybind settings. Will ONLY read the global melee and ranged weapon profiles, not keybind profiles for specific weapons. Use custom key settings to override.')
-            if changed and selected then
-                app.config.hotkeys.seikretKeySource = 'system'
-                app.save_config()
-            end
-            changed, selected = checkbox_with_tooltip('Custom key##SeikretKeySource', app.config.hotkeys.seikretKeySource == 'custom', 'Press any keyboard key to bind it. Press ESC to cancel.')
-            if changed and selected then
-                app.config.hotkeys.seikretKeySource = 'custom'
-                app.save_config()
-            end
-            if app.config.hotkeys.seikretKeySource == 'custom' then
-                imgui.indent(18)
-                imgui.text('Seikret custom key:')
-                imgui.same_line()
-                local seikret_button_label = app.state.binding.seikretCustomKey and 'Binding...' or app.config.hotkeys.seikretCustomKeyName
-                if imgui.small_button(seikret_button_label) then
-                    app.state.binding.seikretCustomKey = true
-                end
-                imgui.unindent(18)
-            end
-
             imgui.tree_pop()
         end
 

@@ -11,7 +11,6 @@ function M.create(app)
     local self = {}
     local window_refocus_restore_duration = 0.60
     local window_refocus_restore_interval = 0.10
-    local logged_window_focus_unavailable = false
 
     local function mark_managed_focus_session()
         app.state.status.managedFocusSession = true
@@ -34,27 +33,7 @@ function M.create(app)
             and app.game.is_focus_active()
     end
 
-    local function build_window_refocus_state_detail()
-        return string.format(
-            "drawn=%s targeting=%s focus=%s managed=%s suppress=%s restore=%s until=%.2f",
-            tostring(app.game.is_weapon_drawn()),
-            tostring(app.game.is_camera_targeting()),
-            tostring(app.game.is_focus_active()),
-            tostring(app.state.status.managedFocusSession),
-            tostring(app.state.status.suppressFocusUntilWeaponDrawn),
-            tostring(app.state.status.restoreFocusOnWindowRefocus),
-            tonumber(app.state.status.restoreFocusOnWindowRefocusUntil) or 0
-        )
-    end
-
-    local function clear_window_refocus_restore(reason)
-        if reason ~= nil then
-            app.dev.trace_window_refocus(
-                "clear",
-                string.format("reason=%s %s", tostring(reason), build_window_refocus_state_detail())
-            )
-        end
-
+    local function clear_window_refocus_restore()
         app.state.status.restoreFocusOnWindowRefocus = false
         app.state.status.restoreFocusOnWindowRefocusUntil = 0
         app.state.status.lastWindowRefocusRestoreAt = 0
@@ -221,10 +200,9 @@ function M.create(app)
     function self.update()
         local is_game_window_focused = app.game.is_game_window_focused()
         if is_game_window_focused == nil then
-            if not logged_window_focus_unavailable then
-                logged_window_focus_unavailable = true
-                app.dev.trace_window_refocus("window_detector_unavailable", "reason=noForegroundWindowCheck")
-            end
+            -- If Wilds ever stops exposing the application-active flag, skip
+            -- the whole feature instead of guessing from weaker signals.
+            return
         else
             if is_game_window_focused then
                 app.state.status.refocusRestoreEligible = is_refocus_restore_eligible()
@@ -236,30 +214,14 @@ function M.create(app)
                 app.state.status.restoreFocusOnWindowRefocus = app.state.status.refocusRestoreEligible
                 app.state.status.restoreFocusOnWindowRefocusUntil = 0
                 app.state.status.lastWindowRefocusRestoreAt = 0
-                app.dev.trace_window_refocus(
-                    "window_lost",
-                    build_window_refocus_state_detail()
-                )
             elseif not app.state.status.wasGameWindowFocused and is_game_window_focused then
-                app.dev.trace_window_refocus(
-                    "window_gained",
-                    build_window_refocus_state_detail()
-                )
                 if should_restore_focus_on_window_refocus() then
                     app.state.status.restoreFocusOnWindowRefocusUntil = os.clock() + window_refocus_restore_duration
                     app.state.status.lastWindowRefocusRestoreAt = 0
-                    app.dev.trace_window_refocus(
-                        "arm_restore",
-                        build_window_refocus_state_detail()
-                    )
-                    app.dev.trace_window_refocus(
-                        "restore_attempt",
-                        "reason=windowGained " .. build_window_refocus_state_detail()
-                    )
                     self.activate(true)
                     app.state.status.lastWindowRefocusRestoreAt = os.clock()
                 else
-                    clear_window_refocus_restore("invalidOnRegain")
+                    clear_window_refocus_restore()
                 end
             end
 
@@ -269,18 +231,13 @@ function M.create(app)
         if app.state.status.restoreFocusOnWindowRefocus and is_game_window_focused == true then
             if not should_restore_focus_on_window_refocus()
                 or app.state.status.restoreFocusOnWindowRefocusUntil <= os.clock() then
-                local reason = not should_restore_focus_on_window_refocus() and "invalidDuringRetry" or "timedOut"
-                clear_window_refocus_restore(reason)
+                clear_window_refocus_restore()
             elseif not app.game.is_focus_active()
                 and (os.clock() - app.state.status.lastWindowRefocusRestoreAt) >= window_refocus_restore_interval then
                 app.state.status.lastWindowRefocusRestoreAt = os.clock()
-                app.dev.trace_window_refocus(
-                    "restore_attempt",
-                    build_window_refocus_state_detail()
-                )
                 self.activate(true)
             elseif app.game.is_focus_active() then
-                clear_window_refocus_restore("focusRestored")
+                clear_window_refocus_restore()
             end
         end
 
