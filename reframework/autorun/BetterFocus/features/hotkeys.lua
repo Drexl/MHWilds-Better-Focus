@@ -91,12 +91,18 @@ function M.create(app)
 
     local weapon_aim_idle_types = build_weapon_action_type_names("cAimIdle")
     local weapon_aim_walk_types = build_weapon_action_type_names("cAimWalk")
-    local last_dash_input_state = {
-        systemPress = false,
-        systemHold = false,
-        custom = false,
-        controllerPress = false,
+    local dash_retry_interval = 0.10
+    local dash_sheathe_retry = {
+        active = false,
+        moving = false,
+        nextAttemptAt = 0,
     }
+
+    local function stop_dash_sheathe_retry()
+        dash_sheathe_retry.active = false
+        dash_sheathe_retry.moving = false
+        dash_sheathe_retry.nextAttemptAt = 0
+    end
 
     local function schedule_dash_if_enabled()
         if not app.config.misc.autoDash then
@@ -109,17 +115,22 @@ function M.create(app)
         end, "delayed_dash")
     end
 
-    local function run_dash_actions(moving, trigger_type)
+    local function request_dash_sheathe(moving, is_retry)
         if not app.config.misc.sheatheOnDash then
+            stop_dash_sheathe_retry()
             return
         end
 
-        if (os.clock() - app.state.hotkeys.lastActionAt) < 0.20 then
+        if not is_retry and (os.clock() - app.state.hotkeys.lastActionAt) < 0.20 then
             return
         end
 
-        app.state.hotkeys.lastActionAt = os.clock()
-        app.state.status.lastSheathingAt = os.clock()
+        local now = os.clock()
+        if not is_retry then
+            app.state.hotkeys.lastActionAt = now
+        end
+
+        app.state.status.lastSheathingAt = now
         app.state.status.isSheathing = true
 
         if app.config.misc.focusOffOnSheathe then
@@ -128,32 +139,20 @@ function M.create(app)
 
         app.focus.sheathe_weapon(moving)
         schedule_dash_if_enabled()
+        dash_sheathe_retry.active = true
+        dash_sheathe_retry.moving = moving
+        dash_sheathe_retry.nextAttemptAt = now + dash_retry_interval
     end
 
-    -- The dash-triggered sheathe hotkey only matters while aim/focus actions
-    -- are active, so input is checked from the relevant action hooks instead of
-    -- every frame.
+    -- Aim-state hooks should still fire the initial sheathe request
+    -- immediately. The retry loop only handles the "keep trying while held"
+    -- behavior after that first request.
     function self.handle_dash_hotkey(moving)
-        local dash_input_state = app.game.get_dash_input_state()
-        local trigger_type = nil
-
-        if dash_input_state.custom and not last_dash_input_state.custom then
-            trigger_type = "custom"
-        elseif dash_input_state.controllerPress and not last_dash_input_state.controllerPress then
-            trigger_type = "controllerPress"
-        elseif dash_input_state.systemPress and not last_dash_input_state.systemPress then
-            trigger_type = "systemPress"
-        elseif dash_input_state.systemHold and not last_dash_input_state.systemHold then
-            trigger_type = "systemHold"
-        end
-
-        last_dash_input_state.systemPress = dash_input_state.systemPress
-        last_dash_input_state.systemHold = dash_input_state.systemHold
-        last_dash_input_state.custom = dash_input_state.custom
-        last_dash_input_state.controllerPress = dash_input_state.controllerPress
-
-        if trigger_type then
-            run_dash_actions(moving, trigger_type)
+        if app.game.get_dash_input_state().any then
+            dash_sheathe_retry.moving = moving
+            if not dash_sheathe_retry.active then
+                request_dash_sheathe(moving, false)
+            end
         end
     end
 
@@ -207,6 +206,7 @@ function M.create(app)
 
     function self.update()
         local is_weapon_drawn = app.game.is_weapon_drawn()
+        local dash_input_state = app.game.get_dash_input_state()
         if app.state.status.wasWeaponDrawn == nil then
             app.state.status.wasWeaponDrawn = is_weapon_drawn
         else
@@ -214,6 +214,22 @@ function M.create(app)
                 app.focus.disable()
             end
             app.state.status.wasWeaponDrawn = is_weapon_drawn
+        end
+
+        if app.config.misc.sheatheOnDash and dash_input_state.any and is_weapon_drawn then
+            -- If the player starts holding dash during a long recovery state
+            -- that does not pass through the usual aim hooks, start the retry
+            -- loop as long as Better Focus still considers this an active
+            -- managed focus session.
+            if not dash_sheathe_retry.active and app.state.status.managedFocusSession then
+                request_dash_sheathe(dash_sheathe_retry.moving, false)
+            -- Keep retrying on a timer while dash is still held and the weapon
+            -- has not actually reached a sheathed state yet.
+            elseif dash_sheathe_retry.active and os.clock() >= dash_sheathe_retry.nextAttemptAt then
+                request_dash_sheathe(dash_sheathe_retry.moving, true)
+            end
+        elseif dash_sheathe_retry.active then
+            stop_dash_sheathe_retry()
         end
 
         if app.state.status.isCrouchTurn and (os.clock() - app.state.status.lastCrouchTurnAt) > 1 then

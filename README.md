@@ -11,7 +11,7 @@ Primary features:
 - Disable focus/target camera snapping for HunterPie users
 - Blocking turns your hunter toward the targeted monster
 
-This mod was inspired by mods like AutoFocus, which were out of date when this was created. It is a full rewrite with a broader scope than similar mods.
+This mod was inspired excellent by mods like AutoFocus, which were out of date when this was created. It is a full rewrite with a broader scope than similar mods.
 
 This is my first MHWilds mod. It took much longer than originally planned, and I tested it as thoroughly as I know how. I hope you find it helpful. Feel free to report issues, and please be kind. ^_^
 
@@ -23,11 +23,17 @@ PREREQUISITES:
 - Ability to read
 
 OPTION A:  
-Install via Vortex or a mod manager of your choice. [Nexus link TBD]
+Install via Vortex or a mod manager of your choice. [Nexus Mods Link](https://www.nexusmods.com/monsterhunterwilds/mods/4173)
 
 OPTION B:
 - Download the [latest release](https://github.com/Drexl/MHWilds-Better-Focus/releases/latest)
 - Unzip it into your game root folder, the one that contains `MonsterHunterWilds.exe`
+
+# CONFIGURATION
+Configure using the REFramework UI (Insert key by default).
+- Expand the Script Generated UI header at the bottom.
+- Expand "Better Focus".
+- Toggle settings on/off as desired.
 
 # KNOWN LIMITATIONS
 
