@@ -6,7 +6,9 @@ Primary features:
 - Draw weapon into Focus Mode
 - Sprint/Dash can disable Focus Mode
 - Sprint/Dash can sheathe your weapon
+- Restores Focus Mode after shortcut-bar actions like whetstone or ammo use if Focus Mode was active beforehand
 - Modify focus behavior when mounting Seikret
+- Fixes Focus Mode loss after returning from the title screen
 - Fixes unarmed Focus Mode blocking Seikret call
 - Fixes focus loss when MHWilds stops being the foreground window.
 - Disable focus/target camera snapping (useful for some HunterPie configurations)
@@ -36,10 +38,17 @@ Configure using the REFramework UI (Insert key by default).
 - Expand "Better Focus".
 - Toggle settings on/off as desired.
 
+Keyboard input notes:
+- Better Focus reads dash and Seikret keyboard inputs from the current gameplay keybind profiles instead of relying only on shared/global defaults.
+- No custom hotkey override setup is required.
+
 # KNOWN LIMITATIONS/ISSUES
 
-- System hotkey detection reads the global melee and ranged keyboard profiles only. Weapon-specific keyboard profiles are not currently read. Custom keybind overrides are available in the settings if needed.
 - This mod was primarily developed and tested for KB+M play. Controller testing was more limited, but the features should work. Report issues if you find any.
+- Weapon-profile fallback is still imperfect. If a weapon-specific keyboard profile has been created at least once and later removed/reset, Better Focus may still prefer that weapon-profile binding instead of the shared melee/ranged binding the game appears to be using.
+- Unarmed focus is not restored after alt-tab or other window focus loss. Drawn-weapon refocus restore works, but unarmed focus restore is still not solved.
+- There is still a very narrow edge case where extremely rapid post-movement dash-sheathe input can disable focus without fully sheathing.
+- If you use the mod "Keyboard Shortcut Setting", do not set Shortcut Display Time below 0.8. Lower values can cause jarring camera behavior on some weapons.
 - Some behaviors depend on Monster Hunter Wilds action states and camera states, so edge cases may still exist.
 - If another mod changes the same focus mode, camera, dash, or Seikret behavior, conflicts are possible.
 
