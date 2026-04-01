@@ -1,4 +1,5 @@
 local Config = require("BetterFocus.core.config")
+local State = require("BetterFocus.core.state")
 
 local M = {}
 local MELEE_SHARED_KEYBOARD_CONFIG_INDEX = 1
@@ -116,6 +117,85 @@ function M.create(app)
     local check_command_result_method = nil
     local application_is_active_method = nil
 
+    local function get_address_safe(object)
+        if not object then
+            return 0
+        end
+
+        local ok, address = pcall(function()
+            return object:get_address()
+        end)
+        if ok and type(address) == "number" then
+            return address
+        end
+
+        return 0
+    end
+
+    local function get_master_player()
+        local player_manager = sdk.get_managed_singleton("app.PlayerManager")
+        if not player_manager then
+            return nil
+        end
+
+        return player_manager:getMasterPlayer()
+    end
+
+    local function get_live_player_character(master_player)
+        if not master_player then
+            return nil
+        end
+
+        return master_player:get_Character()
+    end
+
+    local function get_live_player_controller(master_player)
+        if not master_player then
+            return nil
+        end
+
+        local entity = master_player:get_Entity()
+        if not entity or not entity._ControllerEntityHolder then
+            return nil
+        end
+
+        return entity._ControllerEntityHolder:get_Master()
+    end
+
+    local function clear_player_runtime_caches()
+        app.state.caches.playerCharacter = nil
+        app.state.caches.playerController = nil
+    end
+
+    local function sync_player_session()
+        local master_player = get_master_player()
+        local live_character = get_live_player_character(master_player)
+        local live_controller = get_live_player_controller(master_player)
+
+        local live_character_address = get_address_safe(live_character)
+        local live_controller_address = get_address_safe(live_controller)
+        local cached_character_address = get_address_safe(app.state.caches.playerCharacter)
+        local cached_controller_address = get_address_safe(app.state.caches.playerController)
+
+        if live_character_address == 0 or live_controller_address == 0 then
+            if cached_character_address ~= 0 or cached_controller_address ~= 0 then
+                State.reset_runtime(app.state)
+            else
+                clear_player_runtime_caches()
+            end
+            return nil, nil
+        end
+
+        if (cached_character_address ~= 0 and cached_character_address ~= live_character_address)
+            or (cached_controller_address ~= 0 and cached_controller_address ~= live_controller_address) then
+            State.reset_runtime(app.state)
+        end
+
+        app.state.caches.playerCharacter = live_character
+        app.state.caches.playerController = live_controller
+        return live_character, live_controller
+    end
+
     local function get_main_pad_from_manager()
         local pad_manager = sdk.get_managed_singleton("ace.PadManager")
         if not pad_manager then
@@ -154,50 +234,17 @@ function M.create(app)
     end
 
     function self.get_player_character()
-        local cached = app.state.caches.playerCharacter
-        if cached and cached:get_address() ~= 0 then
-            return cached
-        end
-
-        local player_manager = sdk.get_managed_singleton("app.PlayerManager")
-        if not player_manager then
-            return nil
-        end
-
-        local master_player = player_manager:getMasterPlayer()
-        if not master_player then
-            return nil
-        end
-
-        local player_character = master_player:get_Character()
-        app.state.caches.playerCharacter = player_character
+        local player_character = sync_player_session()
         return player_character
     end
 
     function self.get_player_controller()
-        local cached = app.state.caches.playerController
-        if cached and cached:get_address() ~= 0 then
-            return cached
-        end
-
-        local player_manager = sdk.get_managed_singleton("app.PlayerManager")
-        if not player_manager then
-            return nil
-        end
-
-        local master_player = player_manager:getMasterPlayer()
-        if not master_player then
-            return nil
-        end
-
-        local entity = master_player:get_Entity()
-        if not entity or not entity._ControllerEntityHolder then
-            return nil
-        end
-
-        local controller = entity._ControllerEntityHolder:get_Master()
-        app.state.caches.playerController = controller
+        local _, controller = sync_player_session()
         return controller
+    end
+
+    function self.update()
+        sync_player_session()
     end
 
     function self.get_player_sub_action_controller()

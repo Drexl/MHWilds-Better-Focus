@@ -86,4 +86,18 @@ function M.new()
     }
 end
 
+function M.reset_runtime(state)
+    local fresh = M.new()
+
+    state.caches = fresh.caches
+    state.status = fresh.status
+    state.pending = fresh.pending
+    state.camera = fresh.camera
+    state.seikret = fresh.seikret
+    state.tooltip = fresh.tooltip
+    state.binding = fresh.binding
+    state.hotkeys = fresh.hotkeys
+    state.scheduled = fresh.scheduled
+end
+
 return M

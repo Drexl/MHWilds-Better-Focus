@@ -33,6 +33,8 @@ function M.create(app)
     local jump_window_consumer_types = {
         "app.WpCommonActions.cBattleRideAttackWp",
         "app.WpCommonActions.cBattleRideFinishAttack",
+        "app.PlayerCommonAction.cBattleRideAttackWp",
+        "app.PlayerCommonAction.cBattleRideFinishAttack",
     }
 
     local mount_start_types = {
@@ -44,7 +46,28 @@ function M.create(app)
         "app.WpCommonSubAction.cPorterRideDismountAttackStart",
         "app.WpCommonActions.cPorterRideDismountAttack",
         "app.WpCommonActions.cPorterRideDismountAttackLand",
+        "app.PlayerCommonSubAction.cPorterRideDismountAttackStart",
+        "app.PlayerCommonAction.cPorterRideDismountAttack",
+        "app.PlayerCommonAction.cPorterRideDismountAttackLand",
     }
+
+    local weapon_dismount_attack_start_types = {}
+    for type_id = 0, 13 do
+        weapon_dismount_attack_start_types[#weapon_dismount_attack_start_types + 1] =
+            string.format("app.Wp%02dSubAction.cPorterRideDismountAttackStart", type_id)
+    end
+
+    local weapon_dismount_attack_types = {}
+    for type_id = 0, 13 do
+        weapon_dismount_attack_types[#weapon_dismount_attack_types + 1] =
+            string.format("app.Wp%02dAction.cPorterRideDismountAttack", type_id)
+        weapon_dismount_attack_types[#weapon_dismount_attack_types + 1] =
+            string.format("app.Wp%02dAction.cPorterRideDismountAttackLand", type_id)
+        weapon_dismount_attack_types[#weapon_dismount_attack_types + 1] =
+            string.format("app.Wp%02dAction.cBattleRideAttackWp", type_id)
+        weapon_dismount_attack_types[#weapon_dismount_attack_types + 1] =
+            string.format("app.Wp%02dAction.cBattleRideFinishAttack", type_id)
+    end
 
     local slinger_exit_types = {
         "app.PlayerCommonSubAction.cSlingerAimEnd",
@@ -332,6 +355,7 @@ function M.create(app)
         local function hook_direct_focus_attack(type_name)
             app.hooks.hook_owner(type_name, { "doEnter()", "doEnter" }, function()
                 if app.game.is_weapon_enabled() then
+                    app.focus.on_weapon_drawn(type_name)
                     app.focus.activate(true)
                 end
             end)
@@ -352,6 +376,14 @@ function M.create(app)
         end
 
         for _, type_name in ipairs(direct_focus_attack_types) do
+            hook_direct_focus_attack(type_name)
+        end
+
+        for _, type_name in ipairs(weapon_dismount_attack_start_types) do
+            hook_direct_focus_attack(type_name)
+        end
+
+        for _, type_name in ipairs(weapon_dismount_attack_types) do
             hook_direct_focus_attack(type_name)
         end
 

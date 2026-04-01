@@ -52,6 +52,7 @@ function M.init()
 
     re.on_frame(function()
         app.scheduler.update(app.state)
+        app.game.update()
         app.dev.update()
         app.camera.update()
         app.focus.update()
