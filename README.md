@@ -38,10 +38,6 @@ Configure using the REFramework UI (Insert key by default).
 - Expand "Better Focus".
 - Toggle settings on/off as desired.
 
-Keyboard input notes:
-- Better Focus reads dash and Seikret keyboard inputs from the current gameplay keybind profiles instead of relying only on shared/global defaults.
-- No custom hotkey override setup is required.
-
 # KNOWN LIMITATIONS/ISSUES
 
 - This mod was primarily developed and tested for KB+M play. Controller testing was more limited, but the features should work. Report issues if you find any.
