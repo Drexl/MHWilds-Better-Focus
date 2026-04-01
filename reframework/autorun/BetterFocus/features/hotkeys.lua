@@ -206,14 +206,30 @@ function M.create(app)
 
     function self.update()
         local is_weapon_drawn = app.game.is_weapon_drawn()
+        local overwrite_weapon_on_off_state = app.game.get_overwrite_weapon_on_off_state()
         local dash_input_state = app.game.get_dash_input_state()
         if app.state.status.wasWeaponDrawn == nil then
             app.state.status.wasWeaponDrawn = is_weapon_drawn
         else
-            if app.state.status.wasWeaponDrawn and not is_weapon_drawn and app.config.misc.focusOffOnSheathe then
-                app.focus.disable()
+            if not app.state.status.wasWeaponDrawn and is_weapon_drawn then
+                app.focus.on_weapon_drawn("draw_state_transition")
+            elseif app.state.status.wasWeaponDrawn and not is_weapon_drawn and app.config.misc.focusOffOnSheathe then
+                app.focus.on_weapon_sheathed("draw_state_transition")
             end
             app.state.status.wasWeaponDrawn = is_weapon_drawn
+        end
+
+        if app.state.status.wasOverwriteWeaponOnOffState == nil then
+            app.state.status.wasOverwriteWeaponOnOffState = overwrite_weapon_on_off_state
+        else
+            local previous_state = app.state.status.wasOverwriteWeaponOnOffState
+            -- This native state flips to 2 for both manual sheathes and the
+            -- special sheath-ending moves that do not reliably update
+            -- get_IsDraw() in time for Better Focus.
+            if previous_state ~= 2 and overwrite_weapon_on_off_state == 2 and app.config.misc.focusOffOnSheathe then
+                app.focus.on_weapon_sheathed("overwrite_weapon_on_off_state")
+            end
+            app.state.status.wasOverwriteWeaponOnOffState = overwrite_weapon_on_off_state
         end
 
         if app.config.misc.sheatheOnDash and dash_input_state.any and is_weapon_drawn then

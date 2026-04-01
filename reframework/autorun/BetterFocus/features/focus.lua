@@ -14,6 +14,20 @@ function M.create(app)
         app.state.status.managedFocusSession = true
     end
 
+    local function should_block_focus_activation()
+        return app.state.status.suppressFocusUntilWeaponDrawn == true
+    end
+
+    function self.on_weapon_sheathed(reason)
+        app.state.status.suppressFocusUntilWeaponDrawn = true
+        app.state.pending.weaponDrawStage = 0
+        self.disable()
+    end
+
+    function self.on_weapon_drawn(reason)
+        app.state.status.suppressFocusUntilWeaponDrawn = false
+    end
+
     -- When Better Focus turns focus on itself, later hooks can avoid trying to
     -- "re-open" the same focus session again.
     function self.should_skip_managed_retoggle()
@@ -23,6 +37,10 @@ function M.create(app)
     function self.enable_pc(force)
         local controller = app.game.get_player_controller()
         if not controller then
+            return
+        end
+
+        if should_block_focus_activation() then
             return
         end
 
@@ -44,6 +62,10 @@ function M.create(app)
     function self.enable_pad(force)
         local controller = app.game.get_player_controller()
         if not controller then
+            return
+        end
+
+        if should_block_focus_activation() then
             return
         end
 
@@ -103,7 +125,11 @@ function M.create(app)
     -- Native focus-entry hooks call this right before focus is about to open.
     -- That gives the camera module a chance to freeze the sight state and
     -- suppress target-camera snap for this focus session.
-    function self.prepare_native_entry()
+    function self.prepare_native_entry(reason)
+        if should_block_focus_activation() then
+            return
+        end
+
         if not app.config.misc.disableTargetCameraSnap then
             return
         end
@@ -155,6 +181,7 @@ function M.create(app)
         if app.state.pending.weaponDrawStage == 1 then
             app.state.pending.weaponDrawStage = 2
         elseif app.state.pending.weaponDrawStage == 2 then
+            self.on_weapon_drawn("pending_weapon_draw")
             self.activate(true)
             app.state.pending.weaponDrawStage = 0
         end

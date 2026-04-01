@@ -17,8 +17,10 @@ function M.new()
             lastSheathingAt = os.clock(),
             isSlingerAimActive = false,
             managedFocusSession = false,
+            suppressFocusUntilWeaponDrawn = false,
             wasTargeting = nil,
             wasWeaponDrawn = nil,
+            wasOverwriteWeaponOnOffState = nil,
         },
         pending = {
             weaponDrawStage = 0,

@@ -324,6 +324,15 @@ function M.create(app)
         return controller_draw == true
     end
 
+    function self.get_overwrite_weapon_on_off_state()
+        local player_character = self.get_player_character()
+        if not player_character then
+            return nil
+        end
+
+        return normalize_numeric_value(get_field_safe(player_character, "_OverwriteWeaponOnOffState"))
+    end
+
     function self.get_weapon_type_id()
         local player_character = self.get_player_character()
         if not player_character then

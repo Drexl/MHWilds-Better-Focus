@@ -8,6 +8,14 @@ local function build_weapon_action_type_names(action_name)
     return type_names
 end
 
+local function build_weapon_sub_action_type_names(action_name)
+    local type_names = {}
+    for type_id = 0, 13 do
+        type_names[#type_names + 1] = string.format("app.Wp%02dSubAction.%s", type_id, action_name)
+    end
+    return type_names
+end
+
 function M.create(app)
     local self = {}
 
@@ -29,6 +37,9 @@ function M.create(app)
 
     local weapon_aim_idle_types = build_weapon_action_type_names("cAimIdle")
     local weapon_aim_walk_types = build_weapon_action_type_names("cAimWalk")
+    local weapon_off_types = build_weapon_action_type_names("cWpOff")
+    local weapon_move_off_types = build_weapon_action_type_names("cWpMoveOff")
+    local weapon_move_off_subaction_types = build_weapon_sub_action_type_names("cWpMoveOff")
 
     -- Wilds confirms a successful weapon draw at the command-judge layer before
     -- later action states fully settle, so draw detection starts here.
@@ -54,7 +65,17 @@ function M.create(app)
     local function hook_native_focus_entry(type_name)
         app.hooks.hook_owner(type_name, { "doEnter()", "doEnter" }, function()
             if app.game.is_weapon_enabled() and not app.state.status.isCrouchTurn then
-                app.focus.prepare_native_entry()
+                app.focus.prepare_native_entry(type_name)
+            end
+        end, function()
+            -- Some moves can transition through native focus-entry actions even
+            -- though the weapon has effectively sheathed. Re-assert focus-off
+            -- after the game's own doEnter logic if the player is still not
+            -- drawn and the user wants focus cleared on sheathe.
+            if app.config.misc.focusOffOnSheathe
+                and app.state.status.suppressFocusUntilWeaponDrawn
+                and not app.game.is_weapon_drawn() then
+                app.focus.disable()
             end
         end)
     end
@@ -70,13 +91,13 @@ function M.create(app)
     local function hook_focus_off_on_sheathe(type_name)
         app.hooks.hook_owner(type_name, { "doEnter()", "doEnter" }, function()
             if app.config.misc.focusOffOnSheathe then
-                app.focus.disable()
+                app.focus.on_weapon_sheathed(type_name)
             end
         end)
     end
 
     -- All weapon-driven behavior lives in one place so a reader can answer
-    -- “what can my weapon do to focus mode?” without jumping files.
+    -- "what can my weapon do to focus mode?" without jumping files.
     function self.init()
         hook_draw_judge("app.btable.PlCommand.cWpOnJudge")
         hook_draw_judge("app.btable.PlCommand.cWpFlyOnJudge")
@@ -98,6 +119,18 @@ function M.create(app)
         end
 
         for _, type_name in ipairs(sheathe_types) do
+            hook_focus_off_on_sheathe(type_name)
+        end
+
+        for _, type_name in ipairs(weapon_off_types) do
+            hook_focus_off_on_sheathe(type_name)
+        end
+
+        for _, type_name in ipairs(weapon_move_off_types) do
+            hook_focus_off_on_sheathe(type_name)
+        end
+
+        for _, type_name in ipairs(weapon_move_off_subaction_types) do
             hook_focus_off_on_sheathe(type_name)
         end
     end
