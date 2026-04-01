@@ -1,6 +1,7 @@
 local M = {}
 
 local TRACE_SEIKRET = false
+local TRACE_WINDOW_REFOCUS = false
 
 local function starts_with(value, prefix)
     return type(value) == "string" and type(prefix) == "string" and value:sub(1, #prefix) == prefix
@@ -42,6 +43,16 @@ function M.create(_app)
 
         last_trace_by_event[event_name] = message
         print(string.format("[BetterFocus][Seikret] %s", message))
+    end
+
+    function self.trace_window_refocus(event_name, detail)
+        if not TRACE_WINDOW_REFOCUS then
+            return
+        end
+
+        local message = detail ~= nil and detail ~= "" and (tostring(event_name) .. " " .. tostring(detail))
+            or tostring(event_name)
+        print(string.format("[BetterFocus][Refocus] %s", message))
     end
 
     return self

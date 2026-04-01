@@ -32,6 +32,7 @@ function M.init()
         update = function() end,
         draw = function() end,
         trace_seikret = function() end,
+        trace_window_refocus = function() end,
     }
     app.focus = Focus.create(app)
     app.camera = Camera.create(app)
@@ -54,6 +55,7 @@ function M.init()
         app.dev.update()
         app.camera.update()
         app.focus.update()
+        app.weapon.update()
         app.seikret.update()
         app.hotkeys.update()
     end)

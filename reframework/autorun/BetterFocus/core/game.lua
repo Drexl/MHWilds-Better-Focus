@@ -114,6 +114,7 @@ end
 function M.create(app)
     local self = {}
     local check_command_result_method = nil
+    local application_is_active_method = nil
 
     local function get_main_pad_from_manager()
         local pad_manager = sdk.get_managed_singleton("ace.PadManager")
@@ -206,6 +207,25 @@ function M.create(app)
         end
 
         return try_call(player_character, "get_SubActionController")
+    end
+
+    function self.get_player_operation()
+        local controller = self.get_player_controller()
+        return controller and controller._Operation or nil
+    end
+
+    function self.get_player_command_result()
+        local operation = self.get_player_operation()
+        return operation and operation._CommandResult or nil
+    end
+
+    function self.get_move_input_magnitude()
+        local command_result = self.get_player_command_result()
+        if not command_result then
+            return nil
+        end
+
+        return normalize_numeric_value(get_field_safe(command_result, "_LStickMagnitude"))
     end
 
     function self.get_camera_manager()
@@ -314,6 +334,46 @@ function M.create(app)
         return targeting == true
     end
 
+    -- The controller keeps the authoritative aim toggles that Better Focus
+    -- writes when it turns focus on. Those toggles survive better than camera
+    -- targeting checks for restore logic and manual off/on detection.
+    function self.is_focus_active()
+        local controller = self.get_player_controller()
+        if not controller then
+            return false
+        end
+
+        return controller._ToggleAimPc == true
+            or controller._ToggleAimPad == true
+            or controller._ToggleAimShooting == true
+    end
+
+    -- Wilds already exposes whether the application is currently active. Using
+    -- the engine's own flag is more reliable here than Lua FFI, which is not
+    -- available in every REFramework environment.
+    function self.is_game_window_focused()
+        if not application_is_active_method then
+            local application_type = sdk.find_type_definition("via.Application")
+            if not application_type then
+                return nil
+            end
+
+            application_is_active_method = application_type:get_method("get_Active")
+            if not application_is_active_method then
+                return nil
+            end
+        end
+
+        local ok, result = pcall(function()
+            return application_is_active_method:call(nil)
+        end)
+        if ok then
+            return result == true
+        end
+
+        return nil
+    end
+
     function self.is_weapon_drawn()
         local character_draw = try_call(self.get_player_character(), "get_IsDraw()")
         if character_draw ~= nil then
@@ -349,6 +409,11 @@ function M.create(app)
         end
 
         return Config.weapon_keys_by_type[type_id]
+    end
+
+    function self.is_ranged_weapon()
+        local type_id = self.get_weapon_type_id()
+        return RANGED_WEAPON_TYPES[type_id] == true
     end
 
     function self.is_weapon_enabled()

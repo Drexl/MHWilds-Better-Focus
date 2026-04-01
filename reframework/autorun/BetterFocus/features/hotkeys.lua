@@ -88,19 +88,18 @@ end
 
 function M.create(app)
     local self = {}
+    local move_input_threshold = 0.10
 
     local weapon_aim_idle_types = build_weapon_action_type_names("cAimIdle")
     local weapon_aim_walk_types = build_weapon_action_type_names("cAimWalk")
     local dash_retry_interval = 0.10
     local dash_sheathe_retry = {
         active = false,
-        moving = false,
         nextAttemptAt = 0,
     }
 
     local function stop_dash_sheathe_retry()
         dash_sheathe_retry.active = false
-        dash_sheathe_retry.moving = false
         dash_sheathe_retry.nextAttemptAt = 0
     end
 
@@ -115,7 +114,7 @@ function M.create(app)
         end, "delayed_dash")
     end
 
-    local function request_dash_sheathe(moving, is_retry)
+    local function request_dash_sheathe(is_retry)
         if not app.config.misc.sheatheOnDash then
             stop_dash_sheathe_retry()
             return
@@ -129,6 +128,11 @@ function M.create(app)
         if not is_retry then
             app.state.hotkeys.lastActionAt = now
         end
+        local move_input_magnitude = app.game.get_move_input_magnitude()
+        local effective_moving = app.state.status.isAimMoving == true
+        if type(move_input_magnitude) == "number" then
+            effective_moving = move_input_magnitude >= move_input_threshold
+        end
 
         app.state.status.lastSheathingAt = now
         app.state.status.isSheathing = true
@@ -137,10 +141,9 @@ function M.create(app)
             app.focus.disable()
         end
 
-        app.focus.sheathe_weapon(moving)
+        app.focus.sheathe_weapon(effective_moving)
         schedule_dash_if_enabled()
         dash_sheathe_retry.active = true
-        dash_sheathe_retry.moving = moving
         dash_sheathe_retry.nextAttemptAt = now + dash_retry_interval
     end
 
@@ -148,10 +151,11 @@ function M.create(app)
     -- immediately. The retry loop only handles the "keep trying while held"
     -- behavior after that first request.
     function self.handle_dash_hotkey(moving)
+        app.state.status.isAimMoving = moving
+
         if app.game.get_dash_input_state().any then
-            dash_sheathe_retry.moving = moving
             if not dash_sheathe_retry.active then
-                request_dash_sheathe(moving, false)
+                request_dash_sheathe(false)
             end
         end
     end
@@ -188,7 +192,7 @@ function M.create(app)
         end)
 
         app.hooks.hook_owner("app.WpCommonActions.cAimWalk", { "doUpdate()", "doUpdate" }, function()
-            self.handle_dash_hotkey(false)
+            self.handle_dash_hotkey(true)
         end)
 
         for _, type_name in ipairs(weapon_aim_idle_types) do
@@ -226,7 +230,10 @@ function M.create(app)
             -- This native state flips to 2 for both manual sheathes and the
             -- special sheath-ending moves that do not reliably update
             -- get_IsDraw() in time for Better Focus.
-            if previous_state ~= 2 and overwrite_weapon_on_off_state == 2 and app.config.misc.focusOffOnSheathe then
+            if previous_state ~= 2
+                and overwrite_weapon_on_off_state == 2
+                and app.config.misc.focusOffOnSheathe
+                and app.state.status.ignoreSheatheUntil <= os.clock() then
                 app.focus.on_weapon_sheathed("overwrite_weapon_on_off_state")
             end
             app.state.status.wasOverwriteWeaponOnOffState = overwrite_weapon_on_off_state
@@ -238,11 +245,11 @@ function M.create(app)
             -- loop as long as Better Focus still considers this an active
             -- managed focus session.
             if not dash_sheathe_retry.active and app.state.status.managedFocusSession then
-                request_dash_sheathe(dash_sheathe_retry.moving, false)
+                request_dash_sheathe(false)
             -- Keep retrying on a timer while dash is still held and the weapon
             -- has not actually reached a sheathed state yet.
             elseif dash_sheathe_retry.active and os.clock() >= dash_sheathe_retry.nextAttemptAt then
-                request_dash_sheathe(dash_sheathe_retry.moving, true)
+                request_dash_sheathe(true)
             end
         elseif dash_sheathe_retry.active then
             stop_dash_sheathe_retry()
