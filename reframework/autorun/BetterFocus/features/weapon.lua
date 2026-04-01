@@ -37,6 +37,8 @@ function M.create(app)
 
     local weapon_aim_idle_types = build_weapon_action_type_names("cAimIdle")
     local weapon_aim_walk_types = build_weapon_action_type_names("cAimWalk")
+    local weapon_stealth_attack_types = build_weapon_action_type_names("cStealthAttack")
+    local weapon_stealth_jump_attack_types = build_weapon_action_type_names("cStealthJumpAttack")
     local weapon_off_types = build_weapon_action_type_names("cWpOff")
     local weapon_move_off_types = build_weapon_action_type_names("cWpMoveOff")
     local weapon_move_off_subaction_types = build_weapon_sub_action_type_names("cWpMoveOff")
@@ -83,6 +85,10 @@ function M.create(app)
     local function hook_stealth_attack(type_name)
         app.hooks.hook_owner(type_name, { "doEnter()", "doEnter" }, function()
             if app.game.is_weapon_enabled() then
+                -- Stealth attacks can begin from a sheathed state without going
+                -- through the normal draw-judge path, so clear the suppress
+                -- latch before forcing focus on.
+                app.focus.on_weapon_drawn("stealth_attack")
                 app.focus.activate(true)
             end
         end)
@@ -115,6 +121,14 @@ function M.create(app)
         end
 
         for _, type_name in ipairs(stealth_attack_types) do
+            hook_stealth_attack(type_name)
+        end
+
+        for _, type_name in ipairs(weapon_stealth_attack_types) do
+            hook_stealth_attack(type_name)
+        end
+
+        for _, type_name in ipairs(weapon_stealth_jump_attack_types) do
             hook_stealth_attack(type_name)
         end
 

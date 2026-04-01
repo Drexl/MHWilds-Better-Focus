@@ -31,7 +31,7 @@ function M.create(app)
         changed, app.config.misc.tooltipHelpers = imgui.checkbox('Enable tooltip helpers', app.config.misc.tooltipHelpers)
         if changed then app.save_config() end
 
-        changed, app.config.hotkeys.controllerSupport = imgui.checkbox('Controller support', app.config.hotkeys.controllerSupport)
+        changed, app.config.hotkeys.controllerSupport = imgui.checkbox('Controller support (limited/experimental)', app.config.hotkeys.controllerSupport)
         if changed then app.save_config() end
 
         if tree_with_tooltip('Weapon Draw Settings', "Governs whether focus mode should be enabled for configured weapons when drawn. Should apply to all ways you draw your weapon. Report if you find a situation that doesn't work.") then
