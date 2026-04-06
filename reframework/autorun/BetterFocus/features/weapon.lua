@@ -100,6 +100,14 @@ function M.create(app)
                 app.focus.prepare_native_entry(type_name)
             end
         end, function()
+            if not app.game.is_weapon_enabled() then
+                -- Per-weapon toggles disable Better Focus automation for that
+                -- weapon. They should not force native manual focus activation
+                -- back off just because the mod's draw/sheathe latch was last
+                -- updated by some other weapon state.
+                return
+            end
+
             -- Some moves can transition through native focus-entry actions even
             -- though the weapon has effectively sheathed. Re-assert focus-off
             -- after the game's own doEnter logic if the player is still not

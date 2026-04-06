@@ -17,6 +17,7 @@ function M.create(app)
     local call_porter_action_category = 0
     local call_porter_action_index = 64
     local unarmed_call_attempt_duration = 0.60
+    local pending_mount_behavior_duration = 1.50
     local delayed_replay_interval = 0.10
     local max_delayed_replay_attempts = 2
 
@@ -126,6 +127,16 @@ function M.create(app)
         app.state.seikret.pendingSubActionRequestAttempts = 0
     end
 
+    local function clear_pending_mount_behavior()
+        app.state.seikret.pendingMountBehaviorUntil = 0
+        app.state.seikret.pendingMountRestoreFocus = false
+    end
+
+    local function arm_pending_mount_behavior()
+        app.state.seikret.pendingMountBehaviorUntil = os.clock() + pending_mount_behavior_duration
+        app.state.seikret.pendingMountRestoreFocus = app.state.seikret.restoreFocusOnSuccessfulUnarmedCall == true
+    end
+
     -- Seikret call is blocked while the player is in the unarmed slinger/focus
     -- state. When a real porter-call attempt starts, Better Focus drops focus
     -- once so the game can accept the call.
@@ -218,7 +229,14 @@ function M.create(app)
             app.focus.activate(true)
         elseif mode == "alwaysOff" then
             app.focus.disable()
+        elseif app.state.seikret.pendingMountRestoreFocus then
+            -- Unarmed Seikret call may temporarily drop focus so the game will
+            -- accept the call. "Default" should still preserve the pre-mount
+            -- focus state once the actual mount begins.
+            app.focus.activate(true)
         end
+
+        clear_pending_mount_behavior()
     end
 
     function self.init()
@@ -307,8 +325,13 @@ function M.create(app)
         app.hooks.hook_owner("app.PlayerCommonSubAction.cCallPorter", { "doEnter()", "doEnter" }, function()
             app.state.seikret.unarmedCallEnterSeen = true
             if app.state.seikret.restoreFocusOnSuccessfulUnarmedCall then
+                -- The temporary focus drop only exists to let the call be
+                -- accepted. Once the actual porter-call action starts, we can
+                -- restore focus immediately and still let the later mount
+                -- behavior decide the mounted result.
                 app.focus.activate(true)
             end
+            arm_pending_mount_behavior()
             self.finish_unarmed_call_attempt("unarmedCallAttempt.success")
             app.state.status.isSlingerAimActive = false
         end)
@@ -318,6 +341,7 @@ function M.create(app)
             if app.state.seikret.restoreFocusOnSuccessfulUnarmedCall then
                 app.focus.activate(true)
             end
+            arm_pending_mount_behavior()
             self.finish_unarmed_call_attempt("unarmedCallAttempt.success")
             app.state.status.isSlingerAimActive = false
         end)
@@ -467,6 +491,14 @@ function M.create(app)
 
         if app.state.seikret.dismountContextUntil > 0 and os.clock() > app.state.seikret.dismountContextUntil then
             app.state.seikret.dismountContextUntil = 0
+        end
+
+        if app.state.seikret.pendingMountBehaviorUntil > 0
+            and os.clock() > app.state.seikret.pendingMountBehaviorUntil then
+            if app.state.seikret.pendingMountRestoreFocus then
+                app.focus.activate(true)
+            end
+            clear_pending_mount_behavior()
         end
     end
 

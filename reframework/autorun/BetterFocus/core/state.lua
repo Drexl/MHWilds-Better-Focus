@@ -72,6 +72,8 @@ function M.new()
             pendingRideJudgeAttempts = 0,
             pendingSubActionRequestAt = 0,
             pendingSubActionRequestAttempts = 0,
+            pendingMountBehaviorUntil = 0,
+            pendingMountRestoreFocus = false,
         },
         tooltip = {
             text = nil,
