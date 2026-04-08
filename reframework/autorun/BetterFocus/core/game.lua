@@ -267,6 +267,15 @@ function M.create(app)
         return controller and controller._Operation or nil
     end
 
+    function self.get_player_command_work()
+        local btable_manager = sdk.get_managed_singleton("app.cPlayerBTableManager")
+        if not btable_manager then
+            return nil
+        end
+
+        return self.try_get_managed_object(get_field_safe(btable_manager, "_PlayerCommandWork"))
+    end
+
     function self.get_player_command_result()
         local operation = self.get_player_operation()
         return operation and operation._CommandResult or nil
@@ -578,6 +587,24 @@ function M.create(app)
             return result
         end
         return nil
+    end
+
+    -- Draw-judge hooks operate on command-work objects instead of the later
+    -- action instances that expose normal ownership helpers. Compare against
+    -- the manager's live player command work first, then fall back to the
+    -- embedded character pointer if Wilds ever rebuilds the manager field.
+    function self.command_work_matches_player(command_work)
+        if not command_work then
+            return false
+        end
+
+        local player_command_work = self.get_player_command_work()
+        if player_command_work then
+            return player_command_work == command_work
+        end
+
+        local owner_character = get_field_safe(command_work, "_Character")
+        return owner_character ~= nil and owner_character == self.get_player_character()
     end
 
     function self.get_keyboard_config_list()

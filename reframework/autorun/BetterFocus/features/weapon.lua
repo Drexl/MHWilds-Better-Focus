@@ -77,7 +77,7 @@ function M.create(app)
     local function hook_draw_judge(type_name)
         app.hooks.hook(type_name, "judge(app.cPlayerBTableCommandWork, app.btable.PlCommand.cOptionArg)", function(args)
             local command_work = app.game.try_get_managed_object(args and args[3] or nil)
-            if not command_work then
+            if not command_work or not app.game.command_work_matches_player(command_work) then
                 return
             end
 
