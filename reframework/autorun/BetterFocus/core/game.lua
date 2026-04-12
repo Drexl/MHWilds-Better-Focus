@@ -375,9 +375,28 @@ function M.create(app)
         return weapon_type + WEAPON_KEYBOARD_CONFIG_INDEX_OFFSET
     end
 
+    function self.is_weapon_gameplay_config_active()
+        local weapon_config_index = self.get_weapon_gameplay_config_index()
+        if type(weapon_config_index) ~= "number" then
+            return false
+        end
+
+        local weapon_config = self.get_keyboard_config(weapon_config_index)
+        if not weapon_config then
+            return false
+        end
+
+        -- Wilds leaves stale key rows behind after a weapon profile is deleted.
+        -- The deciding signal is SortID:
+        --   sort_id == config index -> active weapon-specific profile
+        --   sort_id == -1           -> inactive/stale row, use shared profile
+        local sort_id = normalize_numeric_value(get_field_safe(weapon_config, "SortID"))
+        return sort_id == weapon_config_index
+    end
+
     function self.get_active_gameplay_config_index()
         local weapon_config_index = self.get_weapon_gameplay_config_index()
-        if type(weapon_config_index) == "number" then
+        if self.is_weapon_gameplay_config_active() then
             return weapon_config_index
         end
 
@@ -631,6 +650,16 @@ function M.create(app)
         end
 
         return nil
+    end
+
+    function self.get_keyboard_config(config_index)
+        local keyboard_config_list = self.get_keyboard_config_list()
+        local key_configs = keyboard_config_list and get_field_safe(keyboard_config_list, "_KeyCon") or nil
+        if type(config_index) ~= "number" or config_index < 0 then
+            return nil
+        end
+
+        return self.try_get_managed_object(get_array_item_safe(key_configs, config_index))
     end
 
     function self.resolve_main_keys(config_index, keydata_indices)

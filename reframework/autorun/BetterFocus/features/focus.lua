@@ -199,11 +199,7 @@ function M.create(app)
     -- request the same behavior without stepping on each other.
     function self.update()
         local is_game_window_focused = app.game.is_game_window_focused()
-        if is_game_window_focused == nil then
-            -- If Wilds ever stops exposing the application-active flag, skip
-            -- the whole feature instead of guessing from weaker signals.
-            return
-        else
+        if is_game_window_focused ~= nil then
             if is_game_window_focused then
                 app.state.status.refocusRestoreEligible = is_refocus_restore_eligible()
             end
@@ -228,6 +224,8 @@ function M.create(app)
             app.state.status.wasGameWindowFocused = is_game_window_focused
         end
 
+        -- If Wilds ever stops exposing the application-active flag, skip only
+        -- the window-refocus feature instead of guessing from weaker signals.
         if app.state.status.restoreFocusOnWindowRefocus and is_game_window_focused == true then
             if not should_restore_focus_on_window_refocus()
                 or app.state.status.restoreFocusOnWindowRefocusUntil <= os.clock() then
