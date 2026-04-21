@@ -39,7 +39,7 @@ Configure using the REFramework UI (Insert key by default).
 # KNOWN LIMITATIONS
 
 - This mod was primarily developed and tested for KB+M play. Controller testing was more limited, but the features should work. Report issues if you find any.
-- If you keep dash and dash-strike on the same key (default) you may run into issues with some weapons, possibly just bow.
+- If you keep dash and focus-strike on the same key (default) you may run into issues with some weapons, possibly just bow.
 - Unarmed focus is not restored after alt-tab or other window focus loss. Drawn-weapon refocus restore works, but unarmed focus restore is still not solved.
 - There is a very narrow edge case where attempting to sheathe extremely rapidly after movement can disable focus without fully sheathing. Almost no one will encounter this.
 - If you use the mod "Keyboard Shortcut Setting", do not set Shortcut Display Time below 0.8. Lower values can cause jarring camera behavior on some weapons.
