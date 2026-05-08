@@ -82,7 +82,6 @@ function M.create(app)
         draw_keyboard_shortcut_setting_notice()
 
         local changed
-        local selected
 
         changed, app.config.misc.tooltipHelpers = imgui.checkbox('Enable tooltip helpers', app.config.misc.tooltipHelpers)
         if changed then app.save_config() end
@@ -103,19 +102,22 @@ function M.create(app)
             local mount_behavior = app.config.seikret.mountBehavior
 
             imgui.text('Mounting Behaviour')
-            changed, selected = checkbox_with_tooltip('Default', mount_behavior == 'default', 'Keeps the previous focus state when mounting.')
-            if changed then
+            -- Each row is a single-select indicator: clicking the active row
+            -- is a no-op so the modes behave as a radio group rather than
+            -- toggle-back-to-default.
+            changed = checkbox_with_tooltip('Default', mount_behavior == 'default', 'Keeps the previous focus state when mounting.')
+            if changed and mount_behavior ~= 'default' then
                 app.seikret.set_mount_behavior('default')
             end
 
-            changed, selected = checkbox_with_tooltip('Always off', mount_behavior == 'alwaysOff', 'Always turns focus off when mounting.')
-            if changed then
-                app.seikret.set_mount_behavior(selected and 'alwaysOff' or 'default')
+            changed = checkbox_with_tooltip('Always off', mount_behavior == 'alwaysOff', 'Always turns focus off when mounting.')
+            if changed and mount_behavior ~= 'alwaysOff' then
+                app.seikret.set_mount_behavior('alwaysOff')
             end
 
-            changed, selected = checkbox_with_tooltip('Always on', mount_behavior == 'alwaysOn', 'Always turns focus on when mounting.')
-            if changed then
-                app.seikret.set_mount_behavior(selected and 'alwaysOn' or 'default')
+            changed = checkbox_with_tooltip('Always on', mount_behavior == 'alwaysOn', 'Always turns focus on when mounting.')
+            if changed and mount_behavior ~= 'alwaysOn' then
+                app.seikret.set_mount_behavior('alwaysOn')
             end
 
             imgui.new_line()

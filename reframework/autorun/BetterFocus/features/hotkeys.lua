@@ -1,20 +1,10 @@
+local Game = require("BetterFocus.core.game")
+local Util = require("BetterFocus.core.util")
+
+local build_weapon_action_type_names = Util.build_weapon_action_type_names
+local build_weapon_subaction_type_names = Util.build_weapon_subaction_type_names
+
 local M = {}
-
-local function build_weapon_action_type_names(action_name)
-    local type_names = {}
-    for type_id = 0, 13 do
-        type_names[#type_names + 1] = string.format("app.Wp%02dAction.%s", type_id, action_name)
-    end
-    return type_names
-end
-
-local function build_weapon_subaction_type_names(action_name)
-    local type_names = {}
-    for type_id = 0, 13 do
-        type_names[#type_names + 1] = string.format("app.Wp%02dSubAction.%s", type_id, action_name)
-    end
-    return type_names
-end
 
 function M.create(app)
     local self = {}
@@ -98,9 +88,6 @@ function M.create(app)
         if type(move_input_magnitude) == "number" then
             effective_moving = move_input_magnitude >= move_input_threshold
         end
-
-        app.state.status.lastSheathingAt = now
-        app.state.status.isSheathing = true
 
         if app.config.misc.focusOffOnSheathe then
             app.focus.disable()
@@ -220,7 +207,6 @@ function M.create(app)
     function self.update()
         local is_focus_active = app.game.is_focus_active()
         local is_targeting = app.game.is_camera_targeting()
-        local is_weapon_drawn = app.game.is_weapon_drawn()
         local overwrite_weapon_on_off_state = app.game.get_overwrite_weapon_on_off_state()
         local dash_input_state = app.game.get_dash_input_state()
 
@@ -246,26 +232,18 @@ function M.create(app)
             end
         end
 
-        if app.state.status.wasWeaponDrawn == nil then
-            app.state.status.wasWeaponDrawn = is_weapon_drawn
-        else
-            if not app.state.status.wasWeaponDrawn and is_weapon_drawn then
-                app.focus.on_weapon_drawn("draw_state_transition")
-            elseif app.state.status.wasWeaponDrawn and not is_weapon_drawn and app.config.misc.focusOffOnSheathe then
-                app.focus.on_weapon_sheathed("draw_state_transition")
-            end
-            app.state.status.wasWeaponDrawn = is_weapon_drawn
-        end
-
         if app.state.status.wasOverwriteWeaponOnOffState == nil then
             app.state.status.wasOverwriteWeaponOnOffState = overwrite_weapon_on_off_state
         else
             local previous_state = app.state.status.wasOverwriteWeaponOnOffState
-            -- This native state flips to 2 for both manual sheathes and the
-            -- special sheath-ending moves that do not reliably update
-            -- get_IsDraw() in time for Better Focus.
-            if previous_state ~= 2
-                and overwrite_weapon_on_off_state == 2
+            -- This native state flips to OFF for both manual sheathes and the
+            -- special sheath-ending moves that did not reliably update the old
+            -- get_IsDraw() in time. Kept alongside the engine-level
+            -- onWeaponOnStateChanged hook as a redundant signal for the
+            -- transition-edge cases the engine hook may fire too late on.
+            local OFF = Game.MOTION_SEQUENCE_ON_OFF.OFF
+            if previous_state ~= OFF
+                and overwrite_weapon_on_off_state == OFF
                 and app.config.misc.focusOffOnSheathe
                 and app.state.status.ignoreSheatheUntil <= os.clock() then
                 app.focus.on_weapon_sheathed("overwrite_weapon_on_off_state")
@@ -273,31 +251,18 @@ function M.create(app)
             app.state.status.wasOverwriteWeaponOnOffState = overwrite_weapon_on_off_state
         end
 
-        if app.config.misc.sheatheOnDash and dash_input_state.any and is_weapon_drawn then
-            -- If the player starts holding dash during a long recovery state
-            -- that does not pass through the usual aim hooks, start the retry
-            -- loop as long as Better Focus still considers this an active
-            -- managed focus session.
-            if not dash_sheathe_retry.active and app.state.status.managedFocusSession then
-                request_dash_sheathe(false)
-            -- Keep retrying on a timer while dash is still held and the weapon
-            -- has not actually reached a sheathed state yet.
-            elseif dash_sheathe_retry.active and os.clock() >= dash_sheathe_retry.nextAttemptAt then
-                request_dash_sheathe(true)
+        -- The retry flag prevents duplicate requests from the aim-state
+        -- hooks. Clear it once the weapon sheathes or dash is released so
+        -- the hooks can initiate a new request next time.
+        if dash_sheathe_retry.active then
+            if not dash_input_state.any or not app.game.is_weapon_drawn() then
+                stop_dash_sheathe_retry()
             end
-        elseif dash_sheathe_retry.active then
-            stop_dash_sheathe_retry()
         end
 
         if app.state.status.isCrouchTurn and (os.clock() - app.state.status.lastCrouchTurnAt) > 1 then
             app.state.status.isCrouchTurn = false
         end
-
-        if app.state.status.isSheathing and (os.clock() - app.state.status.lastSheathingAt) > 1 then
-            app.state.status.isSheathing = false
-        end
-
-        app.state.status.wasFocusActive = is_focus_active
     end
 
     return self

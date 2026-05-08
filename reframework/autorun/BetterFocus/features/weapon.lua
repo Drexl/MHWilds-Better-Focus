@@ -1,20 +1,9 @@
+local Util = require("BetterFocus.core.util")
+
+local build_weapon_action_type_names = Util.build_weapon_action_type_names
+local build_weapon_sub_action_type_names = Util.build_weapon_subaction_type_names
+
 local M = {}
-
-local function build_weapon_action_type_names(action_name)
-    local type_names = {}
-    for type_id = 0, 13 do
-        type_names[#type_names + 1] = string.format("app.Wp%02dAction.%s", type_id, action_name)
-    end
-    return type_names
-end
-
-local function build_weapon_sub_action_type_names(action_name)
-    local type_names = {}
-    for type_id = 0, 13 do
-        type_names[#type_names + 1] = string.format("app.Wp%02dSubAction.%s", type_id, action_name)
-    end
-    return type_names
-end
 
 function M.create(app)
     local self = {}
@@ -208,9 +197,61 @@ function M.create(app)
         end
     end
 
+    -- Engine-level catch-all: the game calls onWeaponOnStateChanged on the
+    -- HunterCharacter whenever _IsWeaponOn flips. This fires for every
+    -- weapon-off transition including forced sheathes during stun, grab,
+    -- paralysis, and other incapacitation recoveries that bypass the normal
+    -- action-level cWpOff / cWpMoveOff hooks above.
+    --
+    -- The existing per-action hooks handle normal voluntary sheathes; this
+    -- hook exists to close the gap where the engine sheathes the weapon
+    -- without going through a player-initiated action state.
+    local function hook_engine_weapon_state_change()
+        local pending_character = nil
+
+        app.hooks.hook("app.HunterCharacter",
+            { "onWeaponOnStateChanged(System.Boolean)", "onWeaponOnStateChanged" },
+            function(args)
+                -- Pre-hook: capture this pointer, filter to master player.
+                local character = app.game.try_get_managed_object(args and args[2] or nil)
+                if character and character == app.game.get_player_character() then
+                    pending_character = character
+                else
+                    pending_character = nil
+                end
+            end,
+            function(retval)
+                -- Post-hook: the state has been applied. Check is_weapon_drawn
+                -- to see the new value rather than parsing the boolean arg.
+                local character = pending_character
+                pending_character = nil
+                if not character then
+                    return retval
+                end
+
+                if not app.game.is_weapon_drawn() then
+                    -- Respect the draw-entry grace window: during weapon-draw
+                    -- transitions the engine may briefly flip weapon-off before
+                    -- the draw animation commits.
+                    if app.state.status.ignoreSheatheUntil > os.clock() then
+                        return retval
+                    end
+
+                    if app.config.misc.focusOffOnSheathe then
+                        app.focus.on_weapon_sheathed("engine_weapon_off")
+                    end
+                end
+
+                return retval
+            end
+        )
+    end
+
     -- All weapon-driven behavior lives in one place so a reader can answer
     -- "what can my weapon do to focus mode?" without jumping files.
     function self.init()
+        hook_engine_weapon_state_change()
+
         hook_draw_judge("app.btable.PlCommand.cWpOnJudge")
         hook_draw_judge("app.btable.PlCommand.cWpFlyOnJudge")
 

@@ -1,6 +1,11 @@
 *
+
 !.gitignore
 !.gitattributes
 !LICENSE
+!README.md
+
 !reframework/
 !reframework/**
+
+reframework/autorun/BetterFocus/dev.lua

@@ -32,6 +32,16 @@ function M.create(app)
     function self.hook(type_name, method_names, pre_callback, post_callback)
         local method = self.find_method(type_name, method_names)
         if not method then
+            -- Surface unmatched hooks through the dev overlay log so a Wilds
+            -- update that renames or removes a method shows up immediately
+            -- instead of silently disabling a feature.
+            if app.dev and app.dev.push_log then
+                local label = method_names
+                if type(label) == "table" then
+                    label = label[1] or "?"
+                end
+                app.dev.push_log(string.format("hook miss: %s.%s", type_name, tostring(label)))
+            end
             return false
         end
 

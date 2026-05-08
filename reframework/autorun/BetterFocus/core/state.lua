@@ -13,8 +13,6 @@ function M.new()
         status = {
             isCrouchTurn = false,
             lastCrouchTurnAt = os.clock(),
-            isSheathing = false,
-            lastSheathingAt = os.clock(),
             isSlingerAimActive = false,
             isAimMoving = false,
             managedFocusSession = false,
@@ -32,7 +30,6 @@ function M.new()
             restoreFocusAfterShortcutUntil = 0,
             lastObservedFocusAt = 0,
             wasTargeting = nil,
-            wasWeaponDrawn = nil,
             wasOverwriteWeaponOnOffState = nil,
         },
         pending = {
@@ -54,7 +51,6 @@ function M.new()
         seikret = {
             jumpAttackUntil = 0,
             dismountContextUntil = 0,
-            jumpWindowDuration = 1.0,
             lastUnarmedCallFocusDropAt = 0,
             unarmedCallAttemptUntil = 0,
             unarmedCallPrepareSeen = false,

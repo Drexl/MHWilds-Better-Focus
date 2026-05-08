@@ -21,7 +21,6 @@ local M = {}
 -- feature files easier to read because they only contain behavior.
 function M.init()
     local app = {
-        config_module = Config,
         scheduler = Scheduler,
         config = Config.load(),
         state = State.new(),
@@ -32,7 +31,8 @@ function M.init()
     app.tooltips = Tooltips.create(app)
     app.dev = dev_loaded and Dev.create(app) or {
         update = function() end,
-        draw = function() end,
+        push_log = function(_) end,
+        toggle = nil,
     }
     app.focus = Focus.create(app)
     app.camera = Camera.create(app)
@@ -64,7 +64,6 @@ function M.init()
     re.on_draw_ui(function()
         app.menu.draw()
         app.tooltips.draw()
-        app.dev.draw()
     end)
 end
 

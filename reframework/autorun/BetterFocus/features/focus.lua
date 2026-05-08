@@ -1,12 +1,5 @@
 local M = {}
 
-local function get_focus_toggles(controller)
-    if not controller then
-        return nil
-    end
-    return controller
-end
-
 function M.create(app)
     local self = {}
     local window_refocus_restore_duration = 0.60
@@ -41,6 +34,7 @@ function M.create(app)
     end
 
     function self.on_weapon_sheathed(reason)
+        app.dev.push_log("on_weapon_sheathed: " .. tostring(reason))
         app.state.status.longSwordIaiActive = false
         app.state.status.longSwordIaiUntil = 0
         app.state.status.suppressFocusUntilWeaponDrawn = true
@@ -50,6 +44,7 @@ function M.create(app)
     end
 
     function self.on_weapon_drawn(reason)
+        app.dev.push_log("on_weapon_drawn: " .. tostring(reason))
         app.state.status.longSwordIaiActive = false
         app.state.status.longSwordIaiUntil = 0
         app.state.status.suppressFocusUntilWeaponDrawn = false
@@ -79,7 +74,7 @@ function M.create(app)
             return
         end
 
-        get_focus_toggles(controller)._ToggleAimPc = true
+        controller._ToggleAimPc = true
         mark_managed_focus_session()
 
         if app.config.misc.disableTargetCameraSnap and app.state.camera.blockSnapBypassUntil <= os.clock() then
@@ -104,7 +99,7 @@ function M.create(app)
             return
         end
 
-        get_focus_toggles(controller)._ToggleAimPad = true
+        controller._ToggleAimPad = true
         mark_managed_focus_session()
 
         if app.config.misc.disableTargetCameraSnap and app.state.camera.blockSnapBypassUntil <= os.clock() then
@@ -162,6 +157,7 @@ function M.create(app)
             return
         end
 
+        app.dev.push_log("prepare_native_entry: " .. tostring(reason))
         app.state.status.managedFocusSession = true
         app.camera.capture_frozen_sight()
         app.camera.begin_suppress_window()
@@ -174,7 +170,14 @@ function M.create(app)
             return
         end
 
-        player_character:call("changeActionRequest(app.AppActionDef.LAYER, ace.ACTION_ID, System.Boolean)", 0, action_id, false)
+        pcall(function()
+            player_character:call(
+                "changeActionRequest(app.AppActionDef.LAYER, ace.ACTION_ID, System.Boolean)",
+                0,
+                action_id,
+                false
+            )
+        end)
     end
 
     function self.start_dash()
@@ -253,6 +256,27 @@ function M.create(app)
             self.on_weapon_drawn("pending_weapon_draw")
             self.activate(true)
             app.state.pending.weaponDrawStage = 0
+        end
+
+        -- Safety net: if the game externally cleared focus while the mod owns
+        -- the session, something incapacitated the player or the engine forced
+        -- a weapon-off transition that the action hooks missed.
+        --
+        -- With a working is_weapon_drawn() we can distinguish:
+        --   • weapon sheathed (stun/grab/incap recovery) → full on_weapon_sheathed
+        --     cleanup so focus is not re-armed until the next draw cycle.
+        --   • weapon still drawn (manual focus-off, ranged reload, etc.) → just
+        --     relinquish managed-session ownership without suppressing draws.
+        --
+        -- The engine-level onWeaponOnStateChanged hook in weapon.lua is the
+        -- primary catch-all; this passive check exists as a last resort.
+        if app.state.status.managedFocusSession
+            and not app.game.is_focus_active() then
+            if not app.game.is_weapon_drawn() then
+                self.on_weapon_sheathed("passive_weapon_off_check")
+            else
+                app.state.status.managedFocusSession = false
+            end
         end
     end
 

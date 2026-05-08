@@ -1,3 +1,7 @@
+local Util = require("BetterFocus.core.util")
+
+local build_weapon_action_type_names = Util.build_weapon_action_type_names
+
 local M = {}
 
 local function clone_vec3(value)
@@ -20,14 +24,6 @@ local function apply_vec3(target, source)
     target.x = source.x
     target.y = source.y
     target.z = source.z
-end
-
-local function build_weapon_action_type_names(action_name)
-    local type_names = {}
-    for type_id = 0, 13 do
-        type_names[#type_names + 1] = string.format("app.Wp%02dAction.%s", type_id, action_name)
-    end
-    return type_names
 end
 
 function M.create(app)

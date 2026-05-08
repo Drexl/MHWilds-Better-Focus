@@ -1,3 +1,8 @@
+local Util = require("BetterFocus.core.util")
+
+local build_weapon_action_type_names = Util.build_weapon_action_type_names
+local build_weapon_subaction_type_names = Util.build_weapon_subaction_type_names
+
 local M = {}
 
 local function get_field_safe(object, field_name)
@@ -17,9 +22,11 @@ function M.create(app)
     local call_porter_action_category = 0
     local call_porter_action_index = 64
     local unarmed_call_attempt_duration = 0.60
-    local pending_mount_behavior_duration = 1.50
+    local pending_mount_behavior_duration = 5.0
     local delayed_replay_interval = 0.10
     local max_delayed_replay_attempts = 2
+    local jump_window_duration = 1.0
+    local is_mounted = false
 
     local jump_window_start_types = {
         "app.WpCommonActions.cPorterDismountJumpOff",
@@ -52,22 +59,19 @@ function M.create(app)
         "app.PlayerCommonAction.cPorterRideDismountAttackLand",
     }
 
-    local weapon_dismount_attack_start_types = {}
-    for type_id = 0, 13 do
-        weapon_dismount_attack_start_types[#weapon_dismount_attack_start_types + 1] =
-            string.format("app.Wp%02dSubAction.cPorterRideDismountAttackStart", type_id)
-    end
+    local weapon_dismount_attack_start_types =
+        build_weapon_subaction_type_names("cPorterRideDismountAttackStart")
 
     local weapon_dismount_attack_types = {}
-    for type_id = 0, 13 do
-        weapon_dismount_attack_types[#weapon_dismount_attack_types + 1] =
-            string.format("app.Wp%02dAction.cPorterRideDismountAttack", type_id)
-        weapon_dismount_attack_types[#weapon_dismount_attack_types + 1] =
-            string.format("app.Wp%02dAction.cPorterRideDismountAttackLand", type_id)
-        weapon_dismount_attack_types[#weapon_dismount_attack_types + 1] =
-            string.format("app.Wp%02dAction.cBattleRideAttackWp", type_id)
-        weapon_dismount_attack_types[#weapon_dismount_attack_types + 1] =
-            string.format("app.Wp%02dAction.cBattleRideFinishAttack", type_id)
+    for _, action_name in ipairs({
+        "cPorterRideDismountAttack",
+        "cPorterRideDismountAttackLand",
+        "cBattleRideAttackWp",
+        "cBattleRideFinishAttack",
+    }) do
+        for _, type_name in ipairs(build_weapon_action_type_names(action_name)) do
+            weapon_dismount_attack_types[#weapon_dismount_attack_types + 1] = type_name
+        end
     end
 
     local slinger_exit_types = {
@@ -133,14 +137,31 @@ function M.create(app)
     end
 
     local function arm_pending_mount_behavior()
-        app.state.seikret.pendingMountBehaviorUntil = os.clock() + pending_mount_behavior_duration
-        app.state.seikret.pendingMountRestoreFocus = app.state.seikret.restoreFocusOnSuccessfulUnarmedCall == true
+        local until_time = os.clock() + pending_mount_behavior_duration
+        app.state.seikret.pendingMountBehaviorUntil = until_time
+        -- The Seikret call animation sheathes the weapon, which would normally
+        -- trigger onWeaponOnStateChanged and set suppressFocusUntilWeaponDrawn
+        -- before (or after) cPorterRideStart fires. Suppress the engine hook
+        -- for the entire mount window so mount behavior applies cleanly.
+        app.state.status.ignoreSheatheUntil = math.max(
+            app.state.status.ignoreSheatheUntil,
+            until_time
+        )
+        -- Capture focus state before the call animation can turn it off, so
+        -- "Default" mode can restore it. Also covers the unarmed-call case.
+        app.state.seikret.pendingMountRestoreFocus =
+            app.state.seikret.restoreFocusOnSuccessfulUnarmedCall == true
+            or app.game.is_focus_active()
     end
 
     -- Seikret call is blocked while the player is in the unarmed slinger/focus
     -- state. When a real porter-call attempt starts, Better Focus drops focus
     -- once so the game can accept the call.
     function self.try_allow_unarmed_call(reason)
+        if is_mounted then
+            return false
+        end
+
         if not app.config.seikret.allowUnarmedFocusCall then
             return false
         end
@@ -159,6 +180,10 @@ function M.create(app)
     end
 
     function self.try_begin_unarmed_call_attempt(reason)
+        if is_mounted then
+            return false
+        end
+
         if self.is_unarmed_call_attempt_active() then
             return false
         end
@@ -186,7 +211,7 @@ function M.create(app)
     -- opens a short window and waits for a real follow-up attack before turning
     -- focus on.
     function self.begin_jump_attack_window()
-        app.state.seikret.dismountContextUntil = os.clock() + app.state.seikret.jumpWindowDuration
+        app.state.seikret.dismountContextUntil = os.clock() + jump_window_duration
 
         if not app.game.is_weapon_enabled() then
             app.state.seikret.jumpAttackUntil = 0
@@ -226,13 +251,15 @@ function M.create(app)
     function self.apply_mount_behavior()
         local mode = self.get_mount_behavior()
         if mode == "alwaysOn" then
+            -- The engine-level weapon-off hook set suppressFocusUntilWeaponDrawn
+            -- when the Seikret call sheathes the weapon. Clear it before
+            -- activating so the mount-behavior intent is not blocked.
+            app.focus.on_weapon_drawn("seikret_mount")
             app.focus.activate(true)
         elseif mode == "alwaysOff" then
             app.focus.disable()
         elseif app.state.seikret.pendingMountRestoreFocus then
-            -- Unarmed Seikret call may temporarily drop focus so the game will
-            -- accept the call. "Default" should still preserve the pre-mount
-            -- focus state once the actual mount begins.
+            app.focus.on_weapon_drawn("seikret_mount_restore")
             app.focus.activate(true)
         end
 
@@ -265,6 +292,14 @@ function M.create(app)
             local input_check = app.game.try_get_managed_object(args and args[2] or nil)
             local pressed_timer = input_check and get_field_safe(input_check, "_PressedTimer") or nil
             if type(pressed_timer) == "number" and pressed_timer > 0 then
+                -- Set early, before cCallPorter fires, so the engine-level sheathe
+                -- that happens during an armed Seikret call is already suppressed.
+                if not is_mounted then
+                    app.state.status.ignoreSheatheUntil = math.max(
+                        app.state.status.ignoreSheatheUntil,
+                        os.clock() + pending_mount_behavior_duration
+                    )
+                end
                 self.try_begin_unarmed_call_attempt("callPorterInput")
             end
             if self.is_unarmed_call_attempt_active() and not app.state.seikret.unarmedCallPrepareSeen then
@@ -324,13 +359,6 @@ function M.create(app)
 
         app.hooks.hook_owner("app.PlayerCommonSubAction.cCallPorter", { "doEnter()", "doEnter" }, function()
             app.state.seikret.unarmedCallEnterSeen = true
-            if app.state.seikret.restoreFocusOnSuccessfulUnarmedCall then
-                -- The temporary focus drop only exists to let the call be
-                -- accepted. Once the actual porter-call action starts, we can
-                -- restore focus immediately and still let the later mount
-                -- behavior decide the mounted result.
-                app.focus.activate(true)
-            end
             arm_pending_mount_behavior()
             self.finish_unarmed_call_attempt("unarmedCallAttempt.success")
             app.state.status.isSlingerAimActive = false
@@ -338,9 +366,6 @@ function M.create(app)
 
         app.hooks.hook_owner("app.WpCommonSubAction.cCallPorter", { "doEnter()", "doEnter" }, function()
             app.state.seikret.unarmedCallEnterSeen = true
-            if app.state.seikret.restoreFocusOnSuccessfulUnarmedCall then
-                app.focus.activate(true)
-            end
             arm_pending_mount_behavior()
             self.finish_unarmed_call_attempt("unarmedCallAttempt.success")
             app.state.status.isSlingerAimActive = false
@@ -348,6 +373,7 @@ function M.create(app)
 
         local function hook_jump_window_start(type_name)
             app.hooks.hook_owner(type_name, { "doEnter()", "doEnter" }, function()
+                is_mounted = false
                 self.begin_jump_attack_window()
             end)
         end
@@ -368,9 +394,23 @@ function M.create(app)
         end
 
         local function hook_mount_start(type_name)
-            app.hooks.hook_owner(type_name, { "doEnter()", "doEnter" }, function()
-                self.apply_mount_behavior()
-            end)
+            -- Apply mount behavior in the post-hook so doEnter's own mount
+            -- initialization runs first. Otherwise the game can clear aim
+            -- toggles we set in the pre-hook as part of entering the ride state.
+            local owner_matched = false
+            app.hooks.hook_owner(type_name, { "doEnter()", "doEnter" },
+                function()
+                    owner_matched = true
+                    is_mounted = true
+                end,
+                function(retval)
+                    if owner_matched then
+                        owner_matched = false
+                        self.apply_mount_behavior()
+                    end
+                    return retval
+                end
+            )
         end
 
         for _, type_name in ipairs(jump_window_start_types) do
@@ -496,6 +536,7 @@ function M.create(app)
         if app.state.seikret.pendingMountBehaviorUntil > 0
             and os.clock() > app.state.seikret.pendingMountBehaviorUntil then
             if app.state.seikret.pendingMountRestoreFocus then
+                app.focus.on_weapon_drawn("seikret_mount_restore_timeout")
                 app.focus.activate(true)
             end
             clear_pending_mount_behavior()

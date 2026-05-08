@@ -2,6 +2,15 @@ local Config = require("BetterFocus.core.config")
 local State = require("BetterFocus.core.state")
 
 local M = {}
+
+-- app.WeaponDef.MOTION_SEQUENCE_ON_OFF enum values from the IL2CPP dump.
+-- _OverwriteWeaponOnOffState on app.HunterCharacter takes one of these.
+M.MOTION_SEQUENCE_ON_OFF = {
+    NONE = 0,
+    ON = 1,
+    OFF = 2,
+}
+
 local MELEE_SHARED_KEYBOARD_CONFIG_INDEX = 1
 local RANGED_SHARED_KEYBOARD_CONFIG_INDEX = 2
 -- Wilds stores menu controls in config 0, then shared melee/ranged profiles,
@@ -292,7 +301,7 @@ function M.create(app)
 
     function self.get_camera_manager()
         local cached = app.state.caches.cameraManager
-        if cached and cached:get_address() ~= 0 then
+        if cached and get_address_safe(cached) ~= 0 then
             return cached
         end
 
@@ -303,7 +312,7 @@ function M.create(app)
 
     function self.get_ace_keyboard()
         local cached = app.state.caches.aceKeyboard
-        if cached then
+        if cached and get_address_safe(cached) ~= 0 then
             return cached
         end
 
@@ -473,14 +482,11 @@ function M.create(app)
         return nil
     end
 
+    -- get_IsDraw() does not exist on app.HunterCharacter.  The persistent
+    -- weapon-drawn flag lives in the _IsWeaponOn field, exposed through
+    -- the get_IsWeaponOn() property getter discovered in the IL2CPP dump.
     function self.is_weapon_drawn()
-        local character_draw = try_call(self.get_player_character(), "get_IsDraw()")
-        if character_draw ~= nil then
-            return character_draw
-        end
-
-        local controller_draw = try_call(self.get_player_controller(), "get_IsDraw()")
-        return controller_draw == true
+        return try_call(self.get_player_character(), "get_IsWeaponOn") == true
     end
 
     function self.get_overwrite_weapon_on_off_state()
